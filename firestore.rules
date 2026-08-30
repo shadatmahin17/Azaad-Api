@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper function to check ownership
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // User profile document
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isOwner(userId);
+    }
+
+    // User liked songs collection
+    match /users/{userId}/likedSongs/{songId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // User playlists collection
+    match /users/{userId}/playlists/{playlistId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Public / shared playlists
+    match /playlists/{playlistId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+  }
+}

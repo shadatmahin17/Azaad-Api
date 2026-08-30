@@ -1,0 +1,8 @@
+{
+  "name": "Azaad Music",
+  "description": "Azaad Music - High-fidelity full-length music streaming platform with Bollywood, International, and Global curated tracks",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

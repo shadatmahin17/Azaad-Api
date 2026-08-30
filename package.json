@@ -1,0 +1,25 @@
+{
+  "name": "azaad-backend-api",
+  "version": "1.0.0",
+  "description": "Backend API for the Azaad music platform",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "npm run build && node server.js",
+    "build": "cd frontend && npm install --include=dev && npm run build"
+  },
+  "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
+    "cors": "^2.8.5",
+    "crypto-js": "^4.2.0",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "multer": "^1.4.5-lts.1",
+    "yt-search": "^2.13.1"
+  }
+}

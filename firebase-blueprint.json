@@ -1,0 +1,40 @@
+{
+  "entities": {
+    "UserProfile": {
+      "collection": "users",
+      "fields": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      }
+    },
+    "LikedSong": {
+      "collection": "users/{userId}/likedSongs",
+      "fields": {
+        "songId": { "type": "string" },
+        "title": { "type": "string" },
+        "artist": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "audioUrl": { "type": "string" },
+        "duration": { "type": "number" },
+        "source": { "type": "string" },
+        "likedAt": { "type": "timestamp" }
+      }
+    },
+    "Playlist": {
+      "collection": "users/{userId}/playlists",
+      "fields": {
+        "playlistId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "trackCount": { "type": "number" },
+        "tracks": { "type": "array" },
+        "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" }
+      }
+    }
+  }
+}
