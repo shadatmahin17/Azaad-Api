@@ -75,13 +75,6 @@ export function sanitizeCoverUrl(url, song) {
   if (clean.startsWith('http://')) {
     clean = clean.replace(/^http:\/\//i, 'https://');
   }
-  // Check if points to legacy saavncdn which returns 404s
-  if (clean.includes('c.saavncdn.com')) {
-    if (song?.videoId || song?.youtubeId) {
-      return `https://i.ytimg.com/vi/${song.videoId || song.youtubeId}/hqdefault.jpg`;
-    }
-    return fallback;
-  }
   return clean;
 }
 
@@ -235,61 +228,48 @@ export async function resolveYouTubeVideoId(title, artist) {
   return candidates.length > 0 ? candidates[0] : null;
 }
 
-// ─── JIOSAAVN DIRECT SEARCH ─────────────────────────────────────────────────
+// ─── JIOSAAVN DIRECT SEARCH (Verified 320kbps Studio Masters) ──────────────
 
-export async function searchSaavnPublicTracks(query, limit = 25) {
+export async function searchSaavnPublicTracks(query, limit = 15) {
   if (!query) return [];
-  // Try public CORS-friendly JioSaavn endpoints
-  const endpoints = [
-    `https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}&page=1&limit=${limit}`,
-    `https://jiosaavn-api-privatecvc2.vercel.app/search/songs?query=${encodeURIComponent(query)}`,
-  ];
-
-  for (const ep of endpoints) {
-    try {
-      const res = await fetch(ep, { signal: AbortSignal.timeout(4000) });
-      if (res.ok) {
-        const json = await res.json();
-        const songs = json?.data?.results || json?.data?.songs || json?.results || [];
-        if (Array.isArray(songs) && songs.length > 0) {
-          return songs.map((s) => {
-            const dl = Array.isArray(s.downloadUrl) ? s.downloadUrl : [];
-            const highQuality = dl.find((d) => d.quality === '320kbps') || dl[dl.length - 1];
-            const audioUrl = highQuality?.link || highQuality?.url || s.media_url || s.url || '';
-
-            const covers = Array.isArray(s.image) ? s.image : [];
-            const coverObj = covers.find((c) => c.quality === '500x500') || covers[covers.length - 1];
-            const rawCover = coverObj?.link || coverObj?.url || s.image || '';
-            const coverUrl = sanitizeCoverUrl(rawCover, {
-              title: s.name || s.title,
-              artist: s.primaryArtists || s.singers,
+  try {
+    const res = await fetch(
+      `/api/saavn/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (res.ok) {
+      const json = await res.json();
+      const songs = json?.results || [];
+      if (Array.isArray(songs) && songs.length > 0) {
+        return songs
+          .map((s) => {
+            const coverUrl = sanitizeCoverUrl(s.coverUrl, {
+              title: s.title,
+              artist: s.artist,
               id: `saavn-${s.id}`,
             });
-
             return {
               id: `saavn-${s.id}`,
-              title: s.name || s.title || 'Untitled Track',
-              artist: s.primaryArtists || s.singers || s.artist || 'Featured Artist',
-              singers: s.primaryArtists || s.singers || s.artist || 'Featured Artist',
-              album: s.album?.name || s.album || '',
-              category: s.language || s.genre || 'Global',
-              genre: s.language || s.genre || 'Global',
+              title: s.title || 'Untitled Track',
+              artist: s.artist || 'Featured Artist',
+              singers: s.artist || 'Featured Artist',
+              album: s.album || '',
+              category: 'Global',
+              genre: 'Global',
               coverUrl,
-              audioUrl,
-              duration: Number(s.duration) || 240,
-              playCount: Number(s.playCount) || 89000,
+              audioUrl: s.audioUrl || '',
+              duration: Number(s.duration) || 210,
+              playCount: 89000,
               favoriteCount: 4500,
               vibe: 'Studio Master 320k',
               source: 'saavn',
               isFullSong: true,
             };
-          }).filter((t) => t.audioUrl);
-        }
+          })
+          .filter((t) => t.audioUrl);
       }
-    } catch {
-      // Continue to next endpoint
     }
-  }
+  } catch {}
   return [];
 }
 
@@ -406,17 +386,21 @@ export async function searchGoogleMusicTracks(query) {
   return [];
 }
 
-// Live Google Search Grounded Verified & Synced Lyrics
-export async function fetchGoogleSearchLyrics(title, artist, duration = 210) {
+// Echo-Music Multi-Source Synchronized Lyrics (:lyrics + 6 Provider Modules)
+export async function fetchGoogleSearchLyrics(title, artist, duration = 210, options = {}) {
   if (!title) return null;
   try {
     const params = new URLSearchParams({
       title,
       artist: artist || '',
-      duration: String(duration || 210),
+      duration: String(Math.round(Number(duration) || 210)),
     });
+    if (options.album) params.set('album', options.album);
+    if (options.videoId) params.set('videoId', options.videoId);
+    if (options.provider) params.set('provider', options.provider);
+
     const res = await fetch(`/api/google/lyrics?${params.toString()}`, {
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(8500),
     });
     if (res.ok) {
       const data = await res.json();
@@ -615,18 +599,27 @@ export async function searchUnifiedMusic(query, filter = 'all') {
 }
 
 // Dynamically resolve direct audio stream for uninterrupted native background playback
+const clientAudioStreamCache = new Map();
+
 export async function resolveAudioStream(title, artist, videoId) {
+  const cacheKey = `${(title || '').toLowerCase()}::${(artist || '').toLowerCase()}::${videoId || ''}`;
+  if (clientAudioStreamCache.has(cacheKey)) {
+    return clientAudioStreamCache.get(cacheKey);
+  }
   try {
     const params = new URLSearchParams();
     if (title) params.set('title', title);
     if (artist) params.set('artist', artist);
     if (videoId) params.set('videoId', videoId);
     const res = await fetch(`/api/audio/resolve?${params.toString()}`, {
-      signal: AbortSignal.timeout(4500),
+      signal: AbortSignal.timeout(6000),
     });
     if (res.ok) {
       const data = await res.json();
-      if (data && data.success && data.audioUrl) return data;
+      if (data && data.success && data.audioUrl) {
+        clientAudioStreamCache.set(cacheKey, data);
+        return data;
+      }
     }
   } catch {}
   return null;

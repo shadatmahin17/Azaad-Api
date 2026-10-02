@@ -16,8 +16,13 @@ export const normalizeSong = (song = {}, index = 0) => {
   );
 
   let audioUrl = firstNonEmptyString(song.audioUrl, song.directStreamUrl, song.audio, song.songUrl, song.url);
-  // Sanitize defunct CDN links
-  if (audioUrl && (audioUrl.includes('c.saavncdn.com') || audioUrl.includes('aac.saavncdn.com'))) {
+  // Strip 30-second iTunes previews so the player resolves full-length 320kbps streams instead
+  if (
+    audioUrl &&
+    (audioUrl.includes('audio-ssl.itunes.apple.com') ||
+      audioUrl.includes('itunes.apple.com') ||
+      audioUrl.includes('preview.saavncdn.com'))
+  ) {
     audioUrl = '';
   }
   if (!audioUrl && audiusId) {
@@ -100,6 +105,15 @@ export const normalizeSong = (song = {}, index = 0) => {
 
 export const mediaUrl = (url, song) => {
   return sanitizeCoverUrl(url, song);
+};
+
+export const audioStreamUrl = (url) => {
+  if (!url || typeof url !== 'string') return '';
+  const clean = url.trim();
+  if (!clean || clean === 'null' || clean === 'undefined') return '';
+  if (clean.startsWith('//')) return 'https:' + clean;
+  if (clean.startsWith('http://')) return clean.replace(/^http:\/\//i, 'https://');
+  return clean;
 };
 
 export const handleCoverImageError = (e, song) => {

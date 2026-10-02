@@ -117,7 +117,18 @@ const VERIFIED_POPULAR_LYRICS = {
   },
 };
 
-// LRC Parser helper
+// Echo-Music Multi-Source Synchronized Lyrics Registry (:lyrics + 6 Provider Modules)
+const ECHO_LYRICS_PROVIDER_OPTIONS = [
+  { id: 'auto', label: 'Auto (6 Sources)' },
+  { id: 'YouLyPlus', label: 'YouLyPlus' },
+  { id: 'Paxsenix', label: 'PaxSenix' },
+  { id: 'BetterLyrics', label: 'Better Lyrics' },
+  { id: 'SimpMusic', label: 'SimpMusic' },
+  { id: 'LrcLib', label: 'LrcLib' },
+  { id: 'Kugou', label: 'KuGou' },
+];
+
+// LRC / ELRC / Rich-Sync Parser helper (supports YouLyPlus, PaxSenix, BetterLyrics, SimpMusic, LrcLib, KuGou)
 const parseLrcText = (lrcString) => {
   if (!lrcString || typeof lrcString !== 'string') return [];
   const lines = lrcString.split(/\r?\n/);
@@ -126,9 +137,14 @@ const parseLrcText = (lrcString) => {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed) continue;
+    if (!trimmed || /^<[^>]+>$/.test(trimmed)) continue;
     const matches = [...trimmed.matchAll(timeRegex)];
-    const text = trimmed.replace(timeRegex, '').trim();
+    const text = trimmed
+      .replace(timeRegex, '')
+      .replace(/<\d{1,2}:\d{2}(?:\.\d{1,3})?>/g, ' ')
+      .replace(/\{(?:bg|agent:[^}]+)\}/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
 
     if (matches.length > 0 && text) {
       for (const m of matches) {
@@ -277,6 +293,7 @@ export default function MusicPlayerPage({
     source: '',
   });
   const [lyricsLanguageMode, setLyricsLanguageMode] = useState('original'); // 'original' | 'romanized' | 'translation'
+  const [selectedLyricsProvider, setSelectedLyricsProvider] = useState('auto'); // 'auto' | 'YouLyPlus' | 'Paxsenix' | 'BetterLyrics' | 'SimpMusic' | 'LrcLib' | 'Kugou'
   const [syncOffset, setSyncOffset] = useState(0); // In seconds: e.g. -0.5, 0, +0.5
   const [lyricsFontSize, setLyricsFontSize] = useState('normal'); // 'normal' | 'large' | 'xl'
   const [autoScroll, setAutoScroll] = useState(true);
@@ -462,18 +479,23 @@ export default function MusicPlayerPage({
 
     const title = song.title || '';
     const artist = song.singers || song.artist || '';
-    const trackDur = duration || song?.duration || 210;
-    const cacheKey = `${title.toLowerCase()}::${artist.toLowerCase()}`;
+    const trackDur = Math.round(duration || song?.duration || 210);
+    const durBucket = Math.round(trackDur / 5) * 5;
+    const songVideoId =
+      song.videoId ||
+      song.youtubeId ||
+      (String(song.id || '').startsWith('yt-') ? String(song.id).replace(/^yt-/, '') : '');
+    const cacheKey = `${selectedLyricsProvider.toLowerCase()}::${title.toLowerCase()}::${artist.toLowerCase()}::${durBucket}`;
 
-    // 1. Check if song already has lyrics attached
-    if (song.syncedLyrics) {
+    // 1. Check if song already has lyrics attached (when in auto mode)
+    if (selectedLyricsProvider === 'auto' && song.syncedLyrics) {
       const parsed = parseLrcText(song.syncedLyrics);
       if (parsed.length > 0) {
         setLyricsData({ loading: false, type: 'synced', isAutoSynced: false, lines: parsed, rawText: song.syncedLyrics });
         return;
       }
     }
-    if (song.lyrics) {
+    if (selectedLyricsProvider === 'auto' && song.lyrics) {
       if (typeof song.lyrics === 'string' && song.lyrics.includes('[')) {
         const parsed = parseLrcText(song.lyrics);
         if (parsed.length > 0) {
@@ -503,18 +525,20 @@ export default function MusicPlayerPage({
       return;
     }
 
-    // 3. Check verified popular songs dictionary
+    // 3. Check verified popular songs dictionary (when in auto mode)
     const lowerTitle = title.toLowerCase();
-    for (const [key, val] of Object.entries(VERIFIED_POPULAR_LYRICS)) {
-      if (lowerTitle.includes(key)) {
-        const entry = { loading: false, type: val.type, isAutoSynced: false, lines: val.lines, rawText: '' };
-        lyricsCache.set(cacheKey, entry);
-        setLyricsData(entry);
-        return;
+    if (selectedLyricsProvider === 'auto') {
+      for (const [key, val] of Object.entries(VERIFIED_POPULAR_LYRICS)) {
+        if (lowerTitle.includes(key)) {
+          const entry = { loading: false, type: val.type, isAutoSynced: false, lines: val.lines, rawText: '', source: 'Verified Synced' };
+          lyricsCache.set(cacheKey, entry);
+          setLyricsData(entry);
+          return;
+        }
       }
     }
 
-    // 4. Fetch real lyrics with LRCLIB + Server Grounded Fallback
+    // 4. Fetch real lyrics with Echo-Music 6-Provider Engine + Client LrcLib Fallback
     let isMounted = true;
     setLyricsData((prev) => ({ ...prev, loading: true }));
 
@@ -522,8 +546,12 @@ export default function MusicPlayerPage({
       try {
         const { cleanTitle, cleanArtist } = normalizeLyricsQuery(title, artist);
 
-        // Attempt 1: Server-side verified lyrics engine (with smart extraction & duration ranking)
-        const googleResult = await fetchGoogleSearchLyrics(title, artist, trackDur);
+        // Attempt 1: Server-side Echo-Music Multi-Source Lyrics Engine (:lyrics + 6 Provider Modules)
+        const googleResult = await fetchGoogleSearchLyrics(title, artist, trackDur, {
+          album: song.album || '',
+          videoId: songVideoId,
+          provider: selectedLyricsProvider,
+        });
         if (googleResult && isMounted) {
           if (googleResult.syncedLyrics) {
             const parsed = parseLrcText(googleResult.syncedLyrics);
@@ -639,7 +667,7 @@ export default function MusicPlayerPage({
     return () => {
       isMounted = false;
     };
-  }, [song?.id, song?.title, song?.artist, song?.singers]);
+  }, [song?.id, song?.title, song?.artist, song?.singers, selectedLyricsProvider]);
 
   // Re-calibrate auto-synced plain lyrics when real audio duration metadata loads
   useEffect(() => {
@@ -651,17 +679,28 @@ export default function MusicPlayerPage({
     }
   }, [activeDuration, lyricsData.isAutoSynced]);
 
-  // Synchronized Lyrics Fetch Trigger
-  const handleFetchGoogleLyrics = async () => {
+  // Synchronized Lyrics Fetch Trigger (Echo-Music 6-Provider Deep Sync)
+  const handleFetchGoogleLyrics = async (overrideProvider) => {
     if (!song) return;
+    const targetProvider =
+      typeof overrideProvider === 'string' ? overrideProvider : selectedLyricsProvider;
     setIsSearchingGoogleLyrics(true);
     setLyricsData((prev) => ({ ...prev, loading: true }));
     try {
       const targetDur = activeDuration || song.duration || 210;
+      const songVideoId =
+        song.videoId ||
+        song.youtubeId ||
+        (String(song.id || '').startsWith('yt-') ? String(song.id).replace(/^yt-/, '') : '');
       const gLyrics = await fetchGoogleSearchLyrics(
         song.title,
         song.singers || song.artist,
-        targetDur
+        targetDur,
+        {
+          album: song.album || '',
+          videoId: songVideoId,
+          provider: targetProvider,
+        }
       );
       if (gLyrics && (gLyrics.syncedLyrics || gLyrics.plainLyrics)) {
         let lines = [];
@@ -686,7 +725,7 @@ export default function MusicPlayerPage({
           ? gLyrics.translation.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
           : [];
 
-        const cacheKey = `${(song.title || '').toLowerCase()}::${(song.singers || song.artist || '').toLowerCase()}`;
+        const cacheKey = `${targetProvider.toLowerCase()}::${(song.title || '').toLowerCase()}::${(song.singers || song.artist || '').toLowerCase()}`;
         const entry = {
           loading: false,
           type: lines.length > 0 ? 'synced' : 'none',
@@ -697,7 +736,7 @@ export default function MusicPlayerPage({
           romanizedLines,
           translationLines,
           language: gLyrics.language || '',
-          source: isAutoSynced ? 'Smart Time-Synced' : 'Live Synced',
+          source: gLyrics.source || (isAutoSynced ? 'Smart Time-Synced' : 'Live Synced'),
         };
         lyricsCache.set(cacheKey, entry);
         setLyricsData(entry);
@@ -1728,7 +1767,7 @@ export default function MusicPlayerPage({
                     )}
 
                     <button
-                      onClick={handleFetchGoogleLyrics}
+                      onClick={() => handleFetchGoogleLyrics()}
                       disabled={isSearchingGoogleLyrics}
                       className="px-2.5 py-1 rounded-xl bg-[var(--primary)]/15 hover:bg-[var(--primary)]/25 border border-[var(--primary)]/30 text-[11px] font-bold text-[var(--primary)] flex items-center gap-1 cursor-pointer disabled:opacity-50"
                       title="Deep Search Synced Lyrics"
@@ -1737,6 +1776,30 @@ export default function MusicPlayerPage({
                       <span>{isSearchingGoogleLyrics ? 'Syncing...' : 'Sync Lyrics'}</span>
                     </button>
                   </div>
+                </div>
+
+                {/* Echo-Music 6-Provider Module Switcher Bar */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2.5 mb-1 border-b border-white/5">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-white/45 flex-shrink-0 mr-1">
+                    Source:
+                  </span>
+                  {ECHO_LYRICS_PROVIDER_OPTIONS.map((prov) => {
+                    const isActive = selectedLyricsProvider === prov.id;
+                    return (
+                      <button
+                        key={prov.id}
+                        type="button"
+                        onClick={() => setSelectedLyricsProvider(prov.id)}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all cursor-pointer flex-shrink-0 ${
+                          isActive
+                            ? 'bg-[var(--primary)] text-black shadow-[0_0_12px_rgba(83,242,224,0.3)]'
+                            : 'bg-white/5 text-white/65 hover:text-white hover:bg-white/10 border border-white/10'
+                        }`}
+                      >
+                        {prov.label}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Scrollable Lyrics Canvas */}
@@ -2040,7 +2103,7 @@ export default function MusicPlayerPage({
                     </div>
                   )}
                   <button
-                    onClick={handleFetchGoogleLyrics}
+                    onClick={() => handleFetchGoogleLyrics()}
                     disabled={isSearchingGoogleLyrics}
                     className="px-2.5 py-1 rounded-lg bg-[var(--primary)]/15 text-[var(--primary)] text-[11px] font-bold flex items-center gap-1"
                   >
@@ -2048,6 +2111,27 @@ export default function MusicPlayerPage({
                     <span>{isSearchingGoogleLyrics ? 'Syncing...' : 'Sync'}</span>
                   </button>
                 </div>
+              </div>
+
+              {/* Mobile Echo-Music 6-Provider Selector Strip */}
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-2 mb-1 border-b border-white/5">
+                {ECHO_LYRICS_PROVIDER_OPTIONS.map((prov) => {
+                  const isActive = selectedLyricsProvider === prov.id;
+                  return (
+                    <button
+                      key={prov.id}
+                      type="button"
+                      onClick={() => setSelectedLyricsProvider(prov.id)}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold whitespace-nowrap transition-all flex-shrink-0 ${
+                        isActive
+                          ? 'bg-[var(--primary)] text-black'
+                          : 'bg-white/5 text-white/60 border border-white/10'
+                      }`}
+                    >
+                      {prov.label}
+                    </button>
+                  );
+                })}
               </div>
               <div
                 ref={mobileLyricsContainerRef}
