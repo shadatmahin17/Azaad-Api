@@ -48,6 +48,7 @@ import {
 import { fetchGoogleSearchLyrics } from '../services/musicService';
 import { formatTime, mediaUrl, handleCoverImageError as handleCoverError } from '../utils/musicUtils';
 import { LikeHeartButton } from './SongCard';
+import LyricsSection from './LyricsSection';
 
 // Deterministic pseudo-spectrum bars for interactive audio visualizer
 const SPECTRUM_BARS = [
@@ -117,18 +118,7 @@ const VERIFIED_POPULAR_LYRICS = {
   },
 };
 
-// Echo-Music Multi-Source Synchronized Lyrics Registry (:lyrics + 6 Provider Modules)
-const ECHO_LYRICS_PROVIDER_OPTIONS = [
-  { id: 'auto', label: 'Auto (6 Sources)' },
-  { id: 'YouLyPlus', label: 'YouLyPlus' },
-  { id: 'Paxsenix', label: 'PaxSenix' },
-  { id: 'BetterLyrics', label: 'Better Lyrics' },
-  { id: 'SimpMusic', label: 'SimpMusic' },
-  { id: 'LrcLib', label: 'LrcLib' },
-  { id: 'Kugou', label: 'KuGou' },
-];
-
-// LRC / ELRC / Rich-Sync Parser helper (supports YouLyPlus, PaxSenix, BetterLyrics, SimpMusic, LrcLib, KuGou)
+// LRC Parser helper
 const parseLrcText = (lrcString) => {
   if (!lrcString || typeof lrcString !== 'string') return [];
   const lines = lrcString.split(/\r?\n/);
@@ -137,14 +127,9 @@ const parseLrcText = (lrcString) => {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed || /^<[^>]+>$/.test(trimmed)) continue;
+    if (!trimmed) continue;
     const matches = [...trimmed.matchAll(timeRegex)];
-    const text = trimmed
-      .replace(timeRegex, '')
-      .replace(/<\d{1,2}:\d{2}(?:\.\d{1,3})?>/g, ' ')
-      .replace(/\{(?:bg|agent:[^}]+)\}/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const text = trimmed.replace(timeRegex, '').trim();
 
     if (matches.length > 0 && text) {
       for (const m of matches) {
@@ -293,7 +278,6 @@ export default function MusicPlayerPage({
     source: '',
   });
   const [lyricsLanguageMode, setLyricsLanguageMode] = useState('original'); // 'original' | 'romanized' | 'translation'
-  const [selectedLyricsProvider, setSelectedLyricsProvider] = useState('auto'); // 'auto' | 'YouLyPlus' | 'Paxsenix' | 'BetterLyrics' | 'SimpMusic' | 'LrcLib' | 'Kugou'
   const [syncOffset, setSyncOffset] = useState(0); // In seconds: e.g. -0.5, 0, +0.5
   const [lyricsFontSize, setLyricsFontSize] = useState('normal'); // 'normal' | 'large' | 'xl'
   const [autoScroll, setAutoScroll] = useState(true);
@@ -479,23 +463,18 @@ export default function MusicPlayerPage({
 
     const title = song.title || '';
     const artist = song.singers || song.artist || '';
-    const trackDur = Math.round(duration || song?.duration || 210);
-    const durBucket = Math.round(trackDur / 5) * 5;
-    const songVideoId =
-      song.videoId ||
-      song.youtubeId ||
-      (String(song.id || '').startsWith('yt-') ? String(song.id).replace(/^yt-/, '') : '');
-    const cacheKey = `${selectedLyricsProvider.toLowerCase()}::${title.toLowerCase()}::${artist.toLowerCase()}::${durBucket}`;
+    const trackDur = duration || song?.duration || 210;
+    const cacheKey = `${title.toLowerCase()}::${artist.toLowerCase()}`;
 
-    // 1. Check if song already has lyrics attached (when in auto mode)
-    if (selectedLyricsProvider === 'auto' && song.syncedLyrics) {
+    // 1. Check if song already has lyrics attached
+    if (song.syncedLyrics) {
       const parsed = parseLrcText(song.syncedLyrics);
       if (parsed.length > 0) {
         setLyricsData({ loading: false, type: 'synced', isAutoSynced: false, lines: parsed, rawText: song.syncedLyrics });
         return;
       }
     }
-    if (selectedLyricsProvider === 'auto' && song.lyrics) {
+    if (song.lyrics) {
       if (typeof song.lyrics === 'string' && song.lyrics.includes('[')) {
         const parsed = parseLrcText(song.lyrics);
         if (parsed.length > 0) {
@@ -525,20 +504,18 @@ export default function MusicPlayerPage({
       return;
     }
 
-    // 3. Check verified popular songs dictionary (when in auto mode)
+    // 3. Check verified popular songs dictionary
     const lowerTitle = title.toLowerCase();
-    if (selectedLyricsProvider === 'auto') {
-      for (const [key, val] of Object.entries(VERIFIED_POPULAR_LYRICS)) {
-        if (lowerTitle.includes(key)) {
-          const entry = { loading: false, type: val.type, isAutoSynced: false, lines: val.lines, rawText: '', source: 'Verified Synced' };
-          lyricsCache.set(cacheKey, entry);
-          setLyricsData(entry);
-          return;
-        }
+    for (const [key, val] of Object.entries(VERIFIED_POPULAR_LYRICS)) {
+      if (lowerTitle.includes(key)) {
+        const entry = { loading: false, type: val.type, isAutoSynced: false, lines: val.lines, rawText: '' };
+        lyricsCache.set(cacheKey, entry);
+        setLyricsData(entry);
+        return;
       }
     }
 
-    // 4. Fetch real lyrics with Echo-Music 6-Provider Engine + Client LrcLib Fallback
+    // 4. Fetch real lyrics with LRCLIB + Server Grounded Fallback
     let isMounted = true;
     setLyricsData((prev) => ({ ...prev, loading: true }));
 
@@ -546,12 +523,8 @@ export default function MusicPlayerPage({
       try {
         const { cleanTitle, cleanArtist } = normalizeLyricsQuery(title, artist);
 
-        // Attempt 1: Server-side Echo-Music Multi-Source Lyrics Engine (:lyrics + 6 Provider Modules)
-        const googleResult = await fetchGoogleSearchLyrics(title, artist, trackDur, {
-          album: song.album || '',
-          videoId: songVideoId,
-          provider: selectedLyricsProvider,
-        });
+        // Attempt 1: Server-side verified lyrics engine (with smart extraction & duration ranking)
+        const googleResult = await fetchGoogleSearchLyrics(title, artist, trackDur);
         if (googleResult && isMounted) {
           if (googleResult.syncedLyrics) {
             const parsed = parseLrcText(googleResult.syncedLyrics);
@@ -667,7 +640,7 @@ export default function MusicPlayerPage({
     return () => {
       isMounted = false;
     };
-  }, [song?.id, song?.title, song?.artist, song?.singers, selectedLyricsProvider]);
+  }, [song?.id, song?.title, song?.artist, song?.singers]);
 
   // Re-calibrate auto-synced plain lyrics when real audio duration metadata loads
   useEffect(() => {
@@ -679,28 +652,19 @@ export default function MusicPlayerPage({
     }
   }, [activeDuration, lyricsData.isAutoSynced]);
 
-  // Synchronized Lyrics Fetch Trigger (Echo-Music 6-Provider Deep Sync)
-  const handleFetchGoogleLyrics = async (overrideProvider) => {
+  // Synchronized Lyrics Fetch Trigger
+  const handleFetchGoogleLyrics = async (customTitle, customArtist) => {
     if (!song) return;
-    const targetProvider =
-      typeof overrideProvider === 'string' ? overrideProvider : selectedLyricsProvider;
+    const queryTitle = typeof customTitle === 'string' && customTitle.trim() ? customTitle.trim() : song.title;
+    const queryArtist = typeof customArtist === 'string' && customArtist.trim() ? customArtist.trim() : (song.singers || song.artist);
     setIsSearchingGoogleLyrics(true);
     setLyricsData((prev) => ({ ...prev, loading: true }));
     try {
       const targetDur = activeDuration || song.duration || 210;
-      const songVideoId =
-        song.videoId ||
-        song.youtubeId ||
-        (String(song.id || '').startsWith('yt-') ? String(song.id).replace(/^yt-/, '') : '');
       const gLyrics = await fetchGoogleSearchLyrics(
-        song.title,
-        song.singers || song.artist,
-        targetDur,
-        {
-          album: song.album || '',
-          videoId: songVideoId,
-          provider: targetProvider,
-        }
+        queryTitle,
+        queryArtist,
+        targetDur
       );
       if (gLyrics && (gLyrics.syncedLyrics || gLyrics.plainLyrics)) {
         let lines = [];
@@ -725,7 +689,7 @@ export default function MusicPlayerPage({
           ? gLyrics.translation.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
           : [];
 
-        const cacheKey = `${targetProvider.toLowerCase()}::${(song.title || '').toLowerCase()}::${(song.singers || song.artist || '').toLowerCase()}`;
+        const cacheKey = `${(queryTitle || '').toLowerCase()}::${(queryArtist || '').toLowerCase()}`;
         const entry = {
           loading: false,
           type: lines.length > 0 ? 'synced' : 'none',
@@ -736,7 +700,7 @@ export default function MusicPlayerPage({
           romanizedLines,
           translationLines,
           language: gLyrics.language || '',
-          source: gLyrics.source || (isAutoSynced ? 'Smart Time-Synced' : 'Live Synced'),
+          source: isAutoSynced ? 'Smart Time-Synced' : 'Live Synced',
         };
         lyricsCache.set(cacheKey, entry);
         setLyricsData(entry);
@@ -1648,244 +1612,22 @@ export default function MusicPlayerPage({
 
             {/* Desktop Lyrics Tab */}
             {activeTab === 'lyrics' && (
-              <div className="flex-1 flex flex-col h-full overflow-hidden">
-                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-white/10 flex-shrink-0">
-                  <div className="flex items-center gap-2">
-                    <MicrophoneStage weight="duotone" className="w-4 h-4 text-[var(--primary)]" />
-                    <h3 className="text-sm font-bold text-white">Karaoke Lyrics Studio</h3>
-                    {lyricsData.type === 'synced' && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--primary)]/15 text-[var(--primary)] border border-[var(--primary)]/30 font-extrabold uppercase tracking-wider">
-                        Time-Synced
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Lyrics Toolbar */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {(lyricsData.romanizedLines?.length > 0 || lyricsData.translationLines?.length > 0) && (
-                      <div className="flex items-center bg-black/40 p-0.5 rounded-xl border border-white/10">
-                        <button
-                          onClick={() => setLyricsLanguageMode('original')}
-                          className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                            lyricsLanguageMode === 'original'
-                              ? 'bg-[var(--primary)] text-black'
-                              : 'text-white/70 hover:text-white'
-                          }`}
-                        >
-                          Original
-                        </button>
-                        {lyricsData.romanizedLines?.length > 0 && (
-                          <button
-                            onClick={() => setLyricsLanguageMode('romanized')}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                              lyricsLanguageMode === 'romanized'
-                                ? 'bg-[var(--primary)] text-black'
-                                : 'text-white/70 hover:text-white'
-                            }`}
-                          >
-                            Romanized
-                          </button>
-                        )}
-                        {lyricsData.translationLines?.length > 0 && (
-                          <button
-                            onClick={() => setLyricsLanguageMode('translation')}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                              lyricsLanguageMode === 'translation'
-                                ? 'bg-[var(--primary)] text-black'
-                                : 'text-white/70 hover:text-white'
-                            }`}
-                          >
-                            English
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Sync Offset Calibration (-0.5s / +0.5s) & Auto-Scroll */}
-                    {lyricsData.type === 'synced' && (
-                      <div className="flex items-center gap-1 bg-black/40 p-0.5 rounded-xl border border-white/10">
-                        <button
-                          onClick={() => setSyncOffset((o) => Math.round((o - 0.5) * 10) / 10)}
-                          className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold text-white/75 hover:text-[var(--primary)] hover:bg-white/5 cursor-pointer"
-                          title="Delay lyrics by 0.5s"
-                        >
-                          -0.5s
-                        </button>
-                        <button
-                          onClick={() => setSyncOffset(0)}
-                          className="px-1.5 py-1 text-[10px] font-mono font-bold text-[var(--primary)] cursor-pointer"
-                          title="Reset lyric sync offset"
-                        >
-                          {syncOffset === 0 ? '0.0s' : `${syncOffset > 0 ? '+' : ''}${syncOffset.toFixed(1)}s`}
-                        </button>
-                        <button
-                          onClick={() => setSyncOffset((o) => Math.round((o + 0.5) * 10) / 10)}
-                          className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold text-white/75 hover:text-[var(--primary)] hover:bg-white/5 cursor-pointer"
-                          title="Advance lyrics by 0.5s"
-                        >
-                          +0.5s
-                        </button>
-                      </div>
-                    )}
-
-                    <button
-                      onClick={() => setAutoScroll((a) => !a)}
-                      className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold flex items-center gap-1 cursor-pointer ${
-                        autoScroll
-                          ? 'bg-[var(--primary)]/15 border-[var(--primary)]/30 text-[var(--primary)]'
-                          : 'bg-white/5 border-white/10 text-white/60 hover:text-white'
-                      }`}
-                      title="Toggle Auto-Scroll Lyrics"
-                    >
-                      <span>{autoScroll ? 'Auto-Scroll On' : 'Auto-Scroll Off'}</span>
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        setLyricsFontSize((s) => (s === 'normal' ? 'large' : s === 'large' ? 'xl' : 'normal'))
-                      }
-                      className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-bold text-white/80 flex items-center gap-1 cursor-pointer"
-                      title="Cycle Lyric Font Size"
-                    >
-                      <TextT weight="bold" className="w-3.5 h-3.5 text-[var(--primary)]" />
-                      <span className="uppercase">{lyricsFontSize}</span>
-                    </button>
-
-                    {lyricsData.lines.length > 0 && (
-                      <button
-                        onClick={handleCopyLyrics}
-                        className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-bold text-white/80 flex items-center gap-1 cursor-pointer"
-                        title="Copy Lyrics"
-                      >
-                        {copiedLyrics ? (
-                          <Check weight="bold" className="w-3.5 h-3.5 text-emerald-400" />
-                        ) : (
-                          <Copy weight="duotone" className="w-3.5 h-3.5" />
-                        )}
-                        <span>{copiedLyrics ? 'Copied' : 'Copy'}</span>
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => handleFetchGoogleLyrics()}
-                      disabled={isSearchingGoogleLyrics}
-                      className="px-2.5 py-1 rounded-xl bg-[var(--primary)]/15 hover:bg-[var(--primary)]/25 border border-[var(--primary)]/30 text-[11px] font-bold text-[var(--primary)] flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                      title="Deep Search Synced Lyrics"
-                    >
-                      <Sparkle weight="fill" className={`w-3 h-3 ${isSearchingGoogleLyrics ? 'animate-spin' : ''}`} />
-                      <span>{isSearchingGoogleLyrics ? 'Syncing...' : 'Sync Lyrics'}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Echo-Music 6-Provider Module Switcher Bar */}
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2.5 mb-1 border-b border-white/5">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-white/45 flex-shrink-0 mr-1">
-                    Source:
-                  </span>
-                  {ECHO_LYRICS_PROVIDER_OPTIONS.map((prov) => {
-                    const isActive = selectedLyricsProvider === prov.id;
-                    return (
-                      <button
-                        key={prov.id}
-                        type="button"
-                        onClick={() => setSelectedLyricsProvider(prov.id)}
-                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all cursor-pointer flex-shrink-0 ${
-                          isActive
-                            ? 'bg-[var(--primary)] text-black shadow-[0_0_12px_rgba(83,242,224,0.3)]'
-                            : 'bg-white/5 text-white/65 hover:text-white hover:bg-white/10 border border-white/10'
-                        }`}
-                      >
-                        {prov.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Scrollable Lyrics Canvas */}
-                <div
-                  ref={lyricsContainerRef}
-                  className="flex-1 overflow-y-auto px-3 py-6 space-y-4 custom-scrollbar text-center"
-                >
-                  {lyricsData.loading ? (
-                    <div className="h-full flex flex-col items-center justify-center gap-3 text-[var(--text-light)]">
-                      <div className="w-9 h-9 rounded-full border-2 border-[var(--primary)] border-t-transparent animate-spin" />
-                      <p className="text-xs font-medium">Fetching studio-grade lyrics for "{song.title}"...</p>
-                    </div>
-                  ) : lyricsData.lines.length > 0 ? (
-                    lyricsData.lines.map((lineObj, idx) => {
-                      const rawLine = typeof lineObj === 'object' ? lineObj.text : lineObj;
-                      const displayLine =
-                        lyricsLanguageMode === 'romanized' && lyricsData.romanizedLines?.[idx]
-                          ? lyricsData.romanizedLines[idx]
-                          : lyricsLanguageMode === 'translation' && lyricsData.translationLines?.[idx]
-                          ? lyricsData.translationLines[idx]
-                          : rawLine;
-                      const isSynced = lyricsData.type === 'synced';
-                      const isCurrent = isSynced && idx === activeLyricIndex;
-                      const isPast = isSynced && idx < activeLyricIndex;
-
-                      const sizeClass =
-                        lyricsFontSize === 'xl'
-                          ? 'text-xl sm:text-2xl'
-                          : lyricsFontSize === 'large'
-                          ? 'text-lg sm:text-xl'
-                          : 'text-base sm:text-lg';
-
-                      return (
-                        <div
-                          key={idx}
-                          data-lyric-idx={idx}
-                          onClick={() => {
-                            if (isSynced && typeof lineObj.time === 'number') {
-                              seekTo(Math.max(0, lineObj.time - syncOffset));
-                            }
-                          }}
-                          className={`relative overflow-hidden transition-all duration-300 px-4 py-2.5 rounded-2xl ${
-                            isSynced ? 'cursor-pointer hover:bg-white/5' : ''
-                          } ${
-                            isCurrent
-                              ? 'bg-[var(--primary)]/12 border border-[var(--primary)]/30 text-[var(--primary)] font-extrabold scale-[1.03] shadow-[0_0_24px_rgba(83,242,224,0.18)]'
-                              : isPast
-                              ? 'text-white/40 font-semibold'
-                              : 'text-white/75 font-semibold'
-                          } ${sizeClass}`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="flex-1 text-center">{displayLine}</span>
-                            {isSynced && typeof lineObj.time === 'number' && (
-                              <span className="text-[10px] font-mono tabular-nums opacity-45 flex-shrink-0">
-                                {formatTime(Math.max(0, lineObj.time - syncOffset))}
-                              </span>
-                            )}
-                          </div>
-                          {isCurrent && (
-                            <div className="w-24 mx-auto h-0.5 bg-white/15 rounded-full overflow-hidden mt-1.5">
-                              <div
-                                style={{ width: `${activeLyricProgress}%` }}
-                                className="h-full bg-[var(--primary)] transition-all duration-150"
-                              />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center gap-3 text-center py-8">
-                      <MicrophoneStage weight="duotone" className="w-10 h-10 text-white/25" />
-                      <p className="text-sm font-bold text-white/80">No instant lyrics cached for this track</p>
-                      <button
-                        onClick={handleFetchGoogleLyrics}
-                        disabled={isSearchingGoogleLyrics}
-                        className="px-4 py-2 rounded-xl bg-[var(--primary)] text-black text-xs font-extrabold flex items-center gap-1.5 shadow-md hover:brightness-110 cursor-pointer"
-                      >
-                        <Sparkle weight="fill" className="w-4 h-4" />
-                        <span>{isSearchingGoogleLyrics ? 'Searching...' : 'Search Grounded Lyrics'}</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <LyricsSection
+                song={song}
+                currentTime={currentTime}
+                duration={activeDuration}
+                isPlaying={isPlaying}
+                seekTo={seekTo}
+                lyricsData={lyricsData}
+                onUpdateLyrics={setLyricsData}
+                syncOffset={syncOffset}
+                setSyncOffset={setSyncOffset}
+                onSearchLyrics={(customTitle, customArtist) => handleFetchGoogleLyrics(customTitle, customArtist)}
+                isSearchingLyrics={isSearchingGoogleLyrics}
+                isMobile={false}
+                parseLrcText={parseLrcText}
+                buildAutoSyncedLyrics={buildAutoSyncedLyrics}
+              />
             )}
 
             {/* Desktop Queue Tab */}
@@ -2073,113 +1815,23 @@ export default function MusicPlayerPage({
 
           {/* Mobile Lyrics View */}
           {activeTab === 'lyrics' && (
-            <div className="flex-1 bg-[#10161a]/90 border border-white/10 rounded-3xl p-3.5 sm:p-4 flex flex-col overflow-hidden max-h-[54dvh] mb-2">
-              <div className="flex flex-wrap items-center justify-between gap-1.5 pb-2.5 mb-2 border-b border-white/10">
-                <span className="text-xs font-bold text-[var(--primary)] flex items-center gap-1.5">
-                  <MicrophoneStage weight="duotone" className="w-4 h-4" />
-                  {lyricsData.type === 'synced' ? 'Live Synced Lyrics' : 'Lyrics'}
-                </span>
-                <div className="flex items-center gap-1">
-                  {lyricsData.type === 'synced' && (
-                    <div className="flex items-center bg-black/40 p-0.5 rounded-lg border border-white/10 text-[10px] font-mono font-bold">
-                      <button
-                        onClick={() => setSyncOffset((o) => Math.round((o - 0.5) * 10) / 10)}
-                        className="px-1.5 py-0.5 text-white/75 active:text-[var(--primary)]"
-                      >
-                        -0.5s
-                      </button>
-                      <button
-                        onClick={() => setSyncOffset(0)}
-                        className="px-1 py-0.5 text-[var(--primary)]"
-                      >
-                        {syncOffset === 0 ? '0s' : `${syncOffset > 0 ? '+' : ''}${syncOffset}s`}
-                      </button>
-                      <button
-                        onClick={() => setSyncOffset((o) => Math.round((o + 0.5) * 10) / 10)}
-                        className="px-1.5 py-0.5 text-white/75 active:text-[var(--primary)]"
-                      >
-                        +0.5s
-                      </button>
-                    </div>
-                  )}
-                  <button
-                    onClick={() => handleFetchGoogleLyrics()}
-                    disabled={isSearchingGoogleLyrics}
-                    className="px-2.5 py-1 rounded-lg bg-[var(--primary)]/15 text-[var(--primary)] text-[11px] font-bold flex items-center gap-1"
-                  >
-                    <Sparkle weight="fill" className="w-3 h-3" />
-                    <span>{isSearchingGoogleLyrics ? 'Syncing...' : 'Sync'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Mobile Echo-Music 6-Provider Selector Strip */}
-              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-2 mb-1 border-b border-white/5">
-                {ECHO_LYRICS_PROVIDER_OPTIONS.map((prov) => {
-                  const isActive = selectedLyricsProvider === prov.id;
-                  return (
-                    <button
-                      key={prov.id}
-                      type="button"
-                      onClick={() => setSelectedLyricsProvider(prov.id)}
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold whitespace-nowrap transition-all flex-shrink-0 ${
-                        isActive
-                          ? 'bg-[var(--primary)] text-black'
-                          : 'bg-white/5 text-white/60 border border-white/10'
-                      }`}
-                    >
-                      {prov.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div
-                ref={mobileLyricsContainerRef}
-                className="flex-1 overflow-y-auto space-y-2.5 py-3 text-center custom-scrollbar relative"
-              >
-                {lyricsData.loading ? (
-                  <p className="text-xs text-[var(--text-light)] py-10">Synchronizing time-coded lyrics...</p>
-                ) : lyricsData.lines.length > 0 ? (
-                  lyricsData.lines.map((lineObj, idx) => {
-                    const text = typeof lineObj === 'object' ? lineObj.text : lineObj;
-                    const isSynced = lyricsData.type === 'synced';
-                    const isCurrent = isSynced && idx === activeLyricIndex;
-                    const isPast = isSynced && idx < activeLyricIndex;
-                    return (
-                      <div
-                        key={idx}
-                        data-lyric-idx={idx}
-                        onClick={() => {
-                          if (isSynced && typeof lineObj.time === 'number') {
-                            seekTo(Math.max(0, lineObj.time - syncOffset));
-                          }
-                        }}
-                        className={`text-sm sm:text-base px-3 py-2 rounded-2xl transition-all duration-300 ${
-                          isSynced ? 'cursor-pointer active:bg-white/10' : ''
-                        } ${
-                          isCurrent
-                            ? 'text-[var(--primary)] font-extrabold bg-[var(--primary)]/12 border border-[var(--primary)]/30 scale-[1.02] shadow-[0_0_18px_rgba(83,242,224,0.16)]'
-                            : isPast
-                            ? 'text-white/40 font-medium'
-                            : 'text-white/75 font-medium'
-                        }`}
-                      >
-                        <span>{text}</span>
-                        {isCurrent && (
-                          <div className="w-20 mx-auto h-0.5 bg-white/15 rounded-full overflow-hidden mt-1.5">
-                            <div
-                              style={{ width: `${activeLyricProgress}%` }}
-                              className="h-full bg-[var(--primary)] transition-all duration-150"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                ) : (
-                  <p className="text-xs text-white/60 py-10">Tap Sync above to fetch time-synced lyrics.</p>
-                )}
-              </div>
+            <div className="flex-1 bg-[#10161a]/90 border border-white/10 rounded-3xl p-3.5 sm:p-4 flex flex-col overflow-hidden max-h-[58dvh] mb-2">
+              <LyricsSection
+                song={song}
+                currentTime={currentTime}
+                duration={activeDuration}
+                isPlaying={isPlaying}
+                seekTo={seekTo}
+                lyricsData={lyricsData}
+                onUpdateLyrics={setLyricsData}
+                syncOffset={syncOffset}
+                setSyncOffset={setSyncOffset}
+                onSearchLyrics={(customTitle, customArtist) => handleFetchGoogleLyrics(customTitle, customArtist)}
+                isSearchingLyrics={isSearchingGoogleLyrics}
+                isMobile={true}
+                parseLrcText={parseLrcText}
+                buildAutoSyncedLyrics={buildAutoSyncedLyrics}
+              />
             </div>
           )}
 

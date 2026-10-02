@@ -24,7 +24,7 @@ import {
   ArrowsInSimple,
 } from '@phosphor-icons/react';
 import MusicPlayerPage from './MusicPlayerPage';
-import { mediaUrl, audioStreamUrl, handleCoverImageError, formatTime } from '../utils/musicUtils';
+import { mediaUrl, handleCoverImageError, formatTime } from '../utils/musicUtils';
 import {
   resolveYouTubeVideoId,
   resolveYouTubeCandidates,
@@ -33,9 +33,6 @@ import {
 import { LikeHeartButton } from './SongCard';
 
 const PODCAST_PROGRESS_KEY = 'azaad_podcast_progress_v1';
-// 1-second silent PCM WAV data URI to hold mobile OS MediaSession wake-lock during async stream resolution
-const SILENT_KEEPALIVE_WAV =
-  'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
 function getSavedPodcastTime(episodeId) {
   if (!episodeId || typeof window === 'undefined') return 0;
@@ -377,8 +374,7 @@ function PlayerBar({
           setPlaybackEngine('audio');
           setAudioError(false);
           setResolvingStatus('320k Direct Audio Stream');
-          audioRef.current.loop = false;
-          audioRef.current.src = audioStreamUrl(directStream.audioUrl);
+          audioRef.current.src = mediaUrl(directStream.audioUrl);
           audioRef.current.load();
           if (currentTime > 5) {
             audioRef.current.currentTime = currentTime;
@@ -398,8 +394,7 @@ function PlayerBar({
       // 3. Final fallback if song has its own audioUrl
       if (song.audioUrl && audioRef.current) {
         setPlaybackEngine('audio');
-        audioRef.current.loop = false;
-        audioRef.current.src = audioStreamUrl(song.audioUrl);
+        audioRef.current.src = mediaUrl(song.audioUrl);
         audioRef.current.load();
         audioRef.current
           .play()
@@ -432,9 +427,6 @@ function PlayerBar({
 
   // Robust Zero-Failure Fallback when HTML5 <audio> fails
   const handleAudioError = useCallback(async () => {
-    if (audioRef.current?.src?.startsWith('data:audio/wav')) {
-      return;
-    }
     const mediaErr = audioRef.current?.error;
     if (mediaErr?.code === 1 || mediaErr?.name === 'AbortError') {
       return;
@@ -456,8 +448,7 @@ function PlayerBar({
         if (direct && direct.audioUrl && direct.audioUrl !== song?.audioUrl && audioRef.current) {
           setResolvedAudio({ songId, url: direct.audioUrl });
           setPlaybackEngine('audio');
-          audioRef.current.loop = false;
-          audioRef.current.src = audioStreamUrl(direct.audioUrl);
+          audioRef.current.src = mediaUrl(direct.audioUrl);
           audioRef.current.load();
           const playPromise = audioRef.current.play();
           if (playPromise !== undefined) {
@@ -564,7 +555,15 @@ function PlayerBar({
       ytTriedIdsRef.current = new Set();
       lastSavedPodcastSecRef.current = 0;
 
-      // 1. Immediately stop previous YouTube player
+      // 1. Immediately pause and reset HTML5 audio
+      if (audioRef.current) {
+        try {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        } catch {}
+      }
+
+      // 2. Immediately stop previous YouTube player
       if (ytPlayerRef.current) {
         try {
           if (typeof ytPlayerRef.current.stopVideo === 'function') {
@@ -576,12 +575,6 @@ function PlayerBar({
       }
 
       if (!song) {
-        if (audioRef.current) {
-          try {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
-          } catch {}
-        }
         setCurrentTime(0);
         setDuration(0);
         setBufferedProgress(0);
@@ -597,7 +590,7 @@ function PlayerBar({
       const isPod = Boolean(song?.isPodcast || song?.source === 'podcast' || song?.seriesId);
       const savedResumeTime = isPod ? getSavedPodcastTime(song.id) : 0;
 
-      // 2. Reset playback states
+      // 3. Reset playback states
       setCurrentTime(savedResumeTime || 0);
       setDuration(song?.duration || 0);
       setBufferedProgress(0);
@@ -617,26 +610,12 @@ function PlayerBar({
         song?.youtubeId ||
         (String(song?.id).startsWith('yt-') ? String(song?.id).replace(/^yt-/, '') : null);
 
-      // 3. If Video Mode is explicitly open and we have a YouTube ID, use YouTube engine
-      if (showVideo && directYtId) {
-        if (audioRef.current) {
-          try {
-            audioRef.current.pause();
-          } catch {}
-        }
-        setPlaybackEngine('youtube');
-        setActiveYtId(directYtId);
-        initYouTubePlayer(directYtId, true, savedResumeTime);
-        return;
-      }
-
-      // 4. Always prefer native HTML5 <audio> for uninterrupted background & lock-screen playback
-      if (song?.audioUrl) {
+      // 4. Prefer direct HTML5 audio if available and user does not have Video Mode open
+      if (song?.audioUrl && !showVideo) {
         setPlaybackEngine('audio');
         setActiveYtId(directYtId || null);
         if (audioRef.current) {
-          const targetUrl = audioStreamUrl(song.audioUrl);
-          audioRef.current.loop = false;
+          const targetUrl = mediaUrl(song.audioUrl);
           audioRef.current.src = targetUrl;
           audioRef.current.load();
           if (savedResumeTime > 0) {
@@ -662,78 +641,44 @@ function PlayerBar({
               });
           }
         }
+      } else if (directYtId) {
+        setPlaybackEngine('youtube');
+        setActiveYtId(directYtId);
+        initYouTubePlayer(directYtId, true, savedResumeTime);
       } else {
-        // Hold mobile OS MediaSession wake-lock during async stream resolution (do not call pause() in background)
-        if (audioRef.current) {
-          try {
-            audioRef.current.src = SILENT_KEEPALIVE_WAV;
-            audioRef.current.loop = true;
-            audioRef.current.play().catch(() => {});
-          } catch {}
-        }
-
-        setPlaybackEngine('audio');
-        setActiveYtId(directYtId || null);
+        // Track has neither audioUrl nor videoId: resolve both in parallel for fastest start
         setResolvingStatus('Connecting stream...');
-
         Promise.all([
-          resolveAudioStream(song?.title, song?.singers || song?.artist, directYtId).catch(() => null),
-          directYtId
-            ? Promise.resolve([directYtId])
-            : resolveYouTubeCandidates(song?.title, song?.singers || song?.artist).catch(() => []),
+          resolveAudioStream(song?.title, song?.singers || song?.artist, null).catch(() => null),
+          resolveYouTubeCandidates(song?.title, song?.singers || song?.artist).catch(() => []),
         ]).then(([directAudio, ytCandidates]) => {
           if (prevSongIdRef.current !== song?.id) return;
           ytCandidatesRef.current = ytCandidates || [];
-          const bestYt = directYtId || ytCandidates?.[0] || null;
+          const bestYt = ytCandidates?.[0] || null;
           if (bestYt) song.videoId = bestYt;
 
           if (directAudio?.audioUrl && !showVideo && audioRef.current) {
-            song.audioUrl = directAudio.audioUrl;
-            if (directAudio.duration && (!song.duration || song.duration === 210)) {
-              song.duration = directAudio.duration;
-              setDuration(directAudio.duration);
-            }
             setResolvedAudio({ songId: song.id, url: directAudio.audioUrl });
             setPlaybackEngine('audio');
             setActiveYtId(bestYt);
             setResolvingStatus(null);
-            audioRef.current.loop = false;
-            audioRef.current.src = audioStreamUrl(directAudio.audioUrl);
+            audioRef.current.src = mediaUrl(directAudio.audioUrl);
             audioRef.current.load();
             if (savedResumeTime > 0) {
               audioRef.current.currentTime = savedResumeTime;
             }
-            audioRef.current.playbackRate = playbackRate;
-            audioRef.current
-              .play()
-              .then(() => {
-                setIsPlaying(true);
-                setAudioError(false);
-                onPlayStateChange?.(true);
-              })
-              .catch(() => {
-                if (bestYt) {
-                  setPlaybackEngine('youtube');
-                  initYouTubePlayer(bestYt, true, savedResumeTime);
-                }
-              });
+            audioRef.current.play().catch(() => {
+              if (bestYt) {
+                setPlaybackEngine('youtube');
+                initYouTubePlayer(bestYt, true, savedResumeTime);
+              }
+            });
           } else if (bestYt) {
-            if (audioRef.current) {
-              try {
-                audioRef.current.loop = false;
-                audioRef.current.pause();
-              } catch {}
-            }
             setPlaybackEngine('youtube');
             setActiveYtId(bestYt);
             setResolvingStatus(null);
             initYouTubePlayer(bestYt, true, savedResumeTime);
           } else {
-            if (audioRef.current) {
-              try {
-                audioRef.current.loop = false;
-              } catch {}
-            }
             handleAudioError();
           }
         });
@@ -803,12 +748,7 @@ function PlayerBar({
             const fraction = ytPlayerRef.current.getVideoLoadedFraction() || 0;
             setBufferedProgress(fraction * 100);
           }
-        } else if (
-          playbackEngine === 'audio' &&
-          audioRef.current &&
-          !audioRef.current.paused &&
-          !audioRef.current.src?.startsWith('data:audio/wav')
-        ) {
+        } else if (playbackEngine === 'audio' && audioRef.current && !audioRef.current.paused) {
           const curr = audioRef.current.currentTime;
           if (typeof curr === 'number' && !isNaN(curr)) setCurrentTime(curr);
         }
@@ -817,56 +757,20 @@ function PlayerBar({
     return () => clearInterval(timer);
   }, [playbackEngine, isPlaying, isDragging]);
 
-  // Proactively pre-resolve and preload upcoming queue tracks for zero-latency background transitions
+  // Preload next track in queue
   useEffect(() => {
     if (!songs || songs.length <= 1 || !song?.id) return;
     const idx = songs.findIndex((s) => s.id === song?.id);
     const nextSong = idx !== -1 && idx < songs.length - 1 ? songs[idx + 1] : songs[0];
-    const secondNextSong =
-      songs.length > 2 ? songs[(idx + 2) % songs.length] : null;
+    if (!nextSong?.audioUrl) return;
 
-    const timer = setTimeout(async () => {
-      try {
-        if (nextSong && !nextSong.audioUrl) {
-          const nextVid =
-            nextSong.videoId ||
-            nextSong.youtubeId ||
-            (String(nextSong.id).startsWith('yt-') ? String(nextSong.id).replace(/^yt-/, '') : null);
-          const resolved = await resolveAudioStream(
-            nextSong.title,
-            nextSong.singers || nextSong.artist,
-            nextVid
-          );
-          if (resolved?.audioUrl) {
-            nextSong.audioUrl = resolved.audioUrl;
-          }
-        }
-        if (nextSong?.audioUrl) {
-          if (!preloaderRef.current) {
-            preloaderRef.current = new Audio();
-            preloaderRef.current.preload = 'auto';
-          }
-          preloaderRef.current.src = audioStreamUrl(nextSong.audioUrl);
-        }
-
-        if (secondNextSong && !secondNextSong.audioUrl) {
-          const secondVid =
-            secondNextSong.videoId ||
-            secondNextSong.youtubeId ||
-            (String(secondNextSong.id).startsWith('yt-')
-              ? String(secondNextSong.id).replace(/^yt-/, '')
-              : null);
-          const resolvedSecond = await resolveAudioStream(
-            secondNextSong.title,
-            secondNextSong.singers || secondNextSong.artist,
-            secondVid
-          );
-          if (resolvedSecond?.audioUrl) {
-            secondNextSong.audioUrl = resolvedSecond.audioUrl;
-          }
-        }
-      } catch {}
-    }, 1200);
+    const timer = setTimeout(() => {
+      if (!preloaderRef.current) {
+        preloaderRef.current = new Audio();
+        preloaderRef.current.preload = 'auto';
+      }
+      preloaderRef.current.src = mediaUrl(nextSong.audioUrl);
+    }, 1500);
 
     return () => clearTimeout(timer);
   }, [song?.id, songs]);
@@ -971,20 +875,14 @@ function PlayerBar({
   };
 
   const handleTimeUpdate = () => {
-    if (
-      playbackEngine === 'audio' &&
-      audioRef.current &&
-      !isDragging &&
-      !audioRef.current.src?.startsWith('data:audio/wav')
-    ) {
+    if (playbackEngine === 'audio' && audioRef.current && !isDragging) {
       setCurrentTime(audioRef.current.currentTime);
       updateBufferedProgress();
     }
   };
 
   const handleLoadedMetadata = () => {
-    if (audioRef.current?.src?.startsWith('data:audio/wav')) return;
-    if (audioRef.current && !isNaN(audioRef.current.duration) && audioRef.current.duration > 5) {
+    if (audioRef.current && !isNaN(audioRef.current.duration) && audioRef.current.duration > 0) {
       setDuration(audioRef.current.duration);
     } else if (song?.duration) {
       setDuration(song.duration);
@@ -1099,7 +997,6 @@ function PlayerBar({
 
   // Unified Track Ended Handler
   const handleEnded = useCallback(() => {
-    if (audioRef.current?.src?.startsWith('data:audio/wav')) return;
     if (isPodcast && song?.id) {
       savePodcastTime(song.id, 0, duration || song.duration || 0);
     }
@@ -1263,26 +1160,10 @@ function PlayerBar({
     }
   }, [currentTime, duration, song?.duration, isPlaying, playbackRate]);
 
-  // Background playback guard & seamless YouTube-to-Audio background handoff
+  // Background playback guard
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden && isPlaying && playbackEngine === 'youtube' && song) {
-        // When screen locks or tab backgrounds while in YouTube mode, hand off to native <audio>
-        const fallbackUrl = resolvedAudio.songId === song.id && resolvedAudio.url ? resolvedAudio.url : song.audioUrl;
-        const resumeTime =
-          ytPlayerRef.current?.getCurrentTime?.() || currentTime || 0;
-        if (fallbackUrl && audioRef.current) {
-          try {
-            ytPlayerRef.current?.pauseVideo?.();
-          } catch {}
-          setPlaybackEngine('audio');
-          audioRef.current.loop = false;
-          audioRef.current.src = audioStreamUrl(fallbackUrl);
-          audioRef.current.currentTime = resumeTime;
-          audioRef.current.playbackRate = playbackRate;
-          audioRef.current.play().catch(() => {});
-        }
-      } else if (!document.hidden && isPlaying) {
+      if (!document.hidden && isPlaying) {
         if (playbackEngine === 'audio' && audioRef.current && audioRef.current.paused) {
           audioRef.current.play().catch(() => {});
         } else if (playbackEngine === 'youtube' && ytPlayerRef.current) {
@@ -1298,7 +1179,7 @@ function PlayerBar({
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isPlaying, playbackEngine, song, resolvedAudio, currentTime, playbackRate]);
+  }, [isPlaying, playbackEngine]);
 
   const activeDuration = duration || song?.duration || 0;
   const progress = activeDuration ? (currentTime / activeDuration) * 100 : 0;
@@ -1429,6 +1310,7 @@ function PlayerBar({
       {/* HTML5 Audio Element for Direct MP3 / AAC Audio Streams */}
       <audio
         ref={audioRef}
+        src={playbackEngine === 'audio' && song ? mediaUrl(currentStreamUrl) : undefined}
         onTimeUpdate={handleTimeUpdate}
         onProgress={updateBufferedProgress}
         onLoadedMetadata={handleLoadedMetadata}
@@ -1712,6 +1594,21 @@ function PlayerBar({
                   >
                     <BookOpenText size={15} weight="duotone" />
                     <span>Chapters{song.chapters?.length ? ` (${song.chapters.length})` : ''}</span>
+                  </button>
+                )}
+
+                {/* Time-Synced Lyrics Quick-Open Button */}
+                {!isPodcast && (
+                  <button
+                    onClick={() => {
+                      setPreferredPlayerTab('lyrics');
+                      onOpenPlayerPage?.();
+                    }}
+                    className="px-3 py-2 rounded-xl text-[var(--text-light)] hover:text-white bg-white/5 border border-white/10 hover:bg-white/10 hover:border-[var(--primary)]/40 hover:text-[var(--primary)] text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                    title="Open Time-Synced Karaoke Lyrics Studio"
+                  >
+                    <Microphone size={16} weight="duotone" className="text-[var(--primary)]" />
+                    <span>Lyrics</span>
                   </button>
                 )}
 
