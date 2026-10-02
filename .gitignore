@@ -1,9 +1,10 @@
 node_modules/
 dist/
-public/
 data/
 uploads/
 .env
-.env.local
+.env.*
+!.env.example
+firebase-applet-config.json
 .DS_Store
 *.log

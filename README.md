@@ -1,294 +1,273 @@
-# Azaad Backend API
+# Azaad Music — Hi-Fi Global Music & Podcast Streaming Platform
 
-Azaad Backend API is an Express-based service for managing songs, admin authentication, and Supabase-backed user profiles.
+**Azaad Music** is a full-stack, studio-grade music and podcast streaming web application built with **React 18**, **Vite**, **Tailwind CSS v4**, **Express 5 (TypeScript)**, and **Firebase (Authentication & Cloud Firestore)**.
 
-It powers:
-- a React admin dashboard (built with Vite, served from `public/`)
-- API-driven integrations for song management and user profiles
+It delivers uninterrupted full-length playback across global viral hits, international charts, independent Audius artists, and curated podcast shows—complete with real-time synchronized karaoke lyrics, custom cloud playlists, listening telemetry, and multi-tier audio failover.
+
+---
 
 ## Table of Contents
-- [Features](#features)
-- [Architecture](#architecture)
-- [Requirements](#requirements)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
+
+- [Key Features](#key-features)
+- [Architecture & Tech Stack](#architecture--tech-stack)
+- [Hybrid Audio Streaming Engine](#hybrid-audio-streaming-engine)
+- [Environment Configuration (`.env`)](#environment-configuration-env)
+- [Quick Start & Local Development](#quick-start--local-development)
 - [Project Structure](#project-structure)
-- [API Reference](#api-reference)
-- [Storage & Media Behavior](#storage--media-behavior)
-- [Security](#security)
-- [Development](#development)
-- [Deployment](#deployment)
+- [Backend API Reference](#backend-api-reference)
+- [Cloud Firestore Schema & Security Rules](#cloud-firestore-schema--security-rules)
+- [Production Build & Deployment](#production-build--deployment)
+- [Security & Privacy Best Practices](#security--privacy-best-practices)
 - [License](#license)
 
-## Features
+---
 
-- Song catalog API (list with pagination, create, update, delete)
-- File upload support for audio and cover images (Multer)
-- URL-based media support (`http(s)` and `s3://...`)
-- Admin API key protection for song management routes
-- Hybrid authentication:
-  - local admin login (`ADMIN_USERNAME` / `ADMIN_PASSWORD`)
-  - Supabase email/password login
-- Supabase profile endpoints:
-  - sign up / sign in
-  - profile read/update
-  - avatar upload to Supabase Storage
-- React admin dashboard (Vite + Tailwind CSS)
-- Security hardening (Helmet, CORS, rate limiting)
+## Key Features
 
-## Architecture
+### 1. Multi-Source Global Music Discovery
+- **Hourly Updated Top Charts**: Automatically refreshes trending global hits every hour using live Apple Music / iTunes Top Charts, YouTube Music releases, and decentralized Audius discovery nodes.
+- **Organized Browse Modes**: Seamlessly switch between **Curated Shelves**, **Responsive Album Grid**, and **Compact Tracklist Table** views.
+- **Smart Command-Palette Search (`⌘K` / `/`)**: Instant unified search with voice recognition support, scope filters (`All Sources`, `YouTube HD`, `Top Charts`, `Artists`, `Genres`), and cloud-synced search history.
 
-- **Runtime:** Node.js + Express
-- **Data storage:** JSON file (`songs.json`) by default
-- **Auth:** API key + optional Supabase Auth
-- **Media:** local filesystem uploads, optional S3-style URL normalization
-- **Frontend:** React 18 + Vite + Tailwind CSS
-- **Security:** Helmet headers, express-rate-limit, configurable CORS
+### 2. Studio Vinyl Deck & Synchronized Lyrics
+- **Full-Screen Studio Player (`MusicPlayerPage`)**: Features a tactile spinning vinyl turntable, interactive tonearm, live equalizer visualization, and dynamic artwork ambient backdrop.
+- **Real-Time LRC Karaoke Lyrics**: Fetches time-synced LRC and plain lyrics from LRCLIB with line-by-line auto-scroll and interactive timestamp seeking.
+- **Persistent Bottom Player Bar (`PlayerBar`)**: Docked studio transport with seek bar, volume slider, shuffle, repeat modes, queue drawer, and MediaSession API integration (lock-screen controls & background playback).
 
-## Requirements
+### 3. Dedicated Podcast Studio & Shows Hub
+- **Podcast Directory & Series Browser (`PodcastsView`)**: Explore deep-dive episodes across Technology, Health & Science, Business & Startups, Culture & Mindset, True Crime, and History.
+- **Podcast-Optimized Playback Controls**: Variable playback speed (`0.75x` to `2.0x`), `-15s` / `+30s` skip buttons, interactive chapter markers, sleep timer (`15m`, `30m`, `45m`, `60m`, or end of episode), and automatic resume-position persistence.
 
-- Node.js 18+
-- npm 9+
+### 4. Real-Time Firebase Cloud Sync & User Profile
+- **Authentication (`AuthGate`)**: Supports 1-click Google OAuth (`signInWithPopup`), Email/Password registration & sign-in, and instant Guest mode.
+- **Studio Listener Profile (`UserProfileView`)**:
+  - Customizable avatar presets, custom avatar URLs, listener bio, primary music vibe, and preferred streaming bitrate (`320kbps Master`, `256kbps`, `128kbps`).
+  - Automatic **Music Persona** & **Top Artists Listening DNA** calculated from personal stream history and liked tracks.
+  - Real-time Cloud Firestore synchronization for **Liked Songs**, **Custom Playlists**, **Play History**, **Search History**, and **Podcast Subscriptions**.
 
-## Quick Start
+---
 
-1. Install dependencies:
+## Architecture & Tech Stack
 
-```bash
-npm install
+| Layer | Technology |
+| :--- | :--- |
+| **Frontend Framework** | React 18 (Functional Components & Hooks), Vite 5 |
+| **Styling & Design System** | Tailwind CSS v4 (`@tailwindcss/vite`), Custom Studio Dark Glassmorphism |
+| **Icons** | `@phosphor-icons/react` & `lucide-react` |
+| **Backend Server** | Node.js, Express 5 (`server.ts` executed via `tsx` in dev, bundled via `esbuild` in prod) |
+| **Authentication & Database** | Firebase v10 (`firebase/auth` & `firebase/firestore`) |
+| **Audio & Media Engines** | HTML5 Audio API, YouTube IFrame Player API, Audius REST API, JioSaavn 320kbps Stream Resolver, LRCLIB Synced Lyrics API, IndexedDB (Local Uploads) |
+
+---
+
+## Hybrid Audio Streaming Engine
+
+Azaad Music uses a multi-tier audio resolution pipeline so every track plays reliably without dead links or playback interruptions:
+
+1. **Tier 1 — High-Bitrate Native Audio (`320kbps` / `M4A`)**: Resolves direct studio streams via `/api/audio/resolve` (JioSaavn 320kbps, Audius decentralized nodes, and Apple iTunes M4A streams) for zero-latency HTML5 `<audio>` playback and background tab/lock-screen support.
+2. **Tier 2 — Multi-Candidate YouTube HD Failover**: Resolves multiple verified YouTube video IDs per track (`/api/youtube/resolve`) and automatically skips restricted or unavailable embeds (`onError` codes `2`, `5`, `100`, `101`, `150`) to the next playable candidate or native audio stream.
+3. **Tier 3 — Cross-Origin Range Proxy (`/api/audio/proxy`)**: Streams external podcast and audio URLs with full HTTP `206 Partial Content` (`Range` header) support for instant seeking.
+4. **Tier 4 — Client-Side IndexedDB Storage**: Allows users to upload and play local audio files directly in their browser with zero server storage overhead.
+
+---
+
+## Environment Configuration (`.env`)
+
+All sensitive credentials, Firebase keys, OAuth identifiers, and branding asset URLs are externalized into `.env` and loaded via `/src/config/env.js` (client) and `process.env` (server). **No API keys or secrets are hardcoded in source files.**
+
+### Setup Instructions
+
+1. Copy the template file to create your local `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+2. Populate `.env` with your project credentials:
+
+```dotenv
+# ─────────────────────────────────────────────────────────────────────────────
+# Server Runtime Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+NODE_ENV=development
+PORT=3000
+CACHE_TTL_MS=3600000
+AUDIUS_APP_NAME=AZAAD_MUSIC_PLAYER
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Branding & Public Asset Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+VITE_APP_NAME="Azaad Music"
+VITE_APP_LOGO_URL="/img/Logo.png"
+VITE_APP_FAVICON_URL="/img/favicon.png"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Streaming Engine Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+VITE_AUDIUS_APP_NAME="AZAAD_MUSIC_PLAYER"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Firebase Authentication & Cloud Firestore Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+VITE_FIREBASE_PROJECT_ID="your-firebase-project-id"
+VITE_FIREBASE_APP_ID="your-firebase-app-id"
+VITE_FIREBASE_API_KEY="your-firebase-api-key"
+VITE_FIREBASE_AUTH_DOMAIN="your-firebase-project-id.firebaseapp.com"
+VITE_FIREBASE_FIRESTORE_DATABASE_ID="(default)"
+VITE_FIREBASE_STORAGE_BUCKET="your-firebase-project-id.firebasestorage.app"
+VITE_FIREBASE_MESSAGING_SENDER_ID="your-messaging-sender-id"
+VITE_FIREBASE_MEASUREMENT_ID=""
+VITE_FIREBASE_OAUTH_CLIENT_ID="your-google-oauth-client-id.apps.googleusercontent.com"
+VITE_FIREBASE_RECAPTCHA_SITE_KEY=""
 ```
 
-2. Copy and configure environment variables:
+### Environment Variable Reference
 
-```bash
-cp .env.example .env
-# Edit .env and set your own ADMIN_API_KEY, ADMIN_USERNAME, ADMIN_PASSWORD
-```
+| Variable | Scope | Description |
+| :--- | :--- | :--- |
+| `NODE_ENV` | Server | Runtime environment (`development` or `production`). |
+| `PORT` | Server | HTTP server port (default: `3000`). |
+| `CACHE_TTL_MS` | Server | In-memory cache TTL in milliseconds for charts, search, and lyrics (default: `3600000` / 1 hour). |
+| `AUDIUS_APP_NAME` | Server | Application identifier sent to Audius REST API endpoints. |
+| `VITE_APP_NAME` | Client | Application display name. |
+| `VITE_APP_LOGO_URL` | Client | URL or local path for the brand logo rendered across Sidebar, Header, Player, and Auth screens. |
+| `VITE_APP_FAVICON_URL` | Client | URL or local path for the browser favicon and Apple touch icon in `index.html`. |
+| `VITE_AUDIUS_APP_NAME` | Client | Client-side Audius API application identifier. |
+| `VITE_FIREBASE_PROJECT_ID` | Client | Firebase project ID. |
+| `VITE_FIREBASE_APP_ID` | Client | Firebase web application ID. |
+| `VITE_FIREBASE_API_KEY` | Client | Firebase web API key for Auth & Firestore initialization. |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Client | Firebase Authentication domain (`<project-id>.firebaseapp.com`). |
+| `VITE_FIREBASE_FIRESTORE_DATABASE_ID` | Client | Named Cloud Firestore database ID (or `(default)`). |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Client | Firebase Cloud Storage bucket domain. |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Client | Firebase Cloud Messaging sender ID. |
+| `VITE_FIREBASE_OAUTH_CLIENT_ID` | Client | Google OAuth 2.0 Web Client ID. |
 
-3. Build the frontend:
+---
 
-```bash
-npm run build:frontend
-```
+## Quick Start & Local Development
 
-4. Start the API server:
+### Prerequisites
+- **Node.js** `v18+` (recommended `v20+`)
+- **npm** `v9+`
 
-```bash
-npm start
-```
+### Installation & Running Locally
 
-Server default:
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-- API: `http://localhost:5000/api`
-- Dashboard: `http://localhost:5000/`
+2. **Configure environment variables:**
+   ```bash
+   cp .env.example .env
+   ```
 
-## Configuration
+3. **Start the full-stack development server (Express + Vite Middleware on port `3000`):**
+   ```bash
+   npm run dev
+   ```
 
-Environment variables are loaded from `.env` (or `.env.example` if `.env` does not exist).
+4. **Open in browser:**
+   Navigate to `http://localhost:3000`
 
-### Core
-
-- `PORT` – API server port (default: `5000`)
-- `ADMIN_API_KEY` – **required** API key for `x-api-key` header on protected song endpoints
-- `ADMIN_USERNAME` – **required** local admin username
-- `ADMIN_PASSWORD` – **required** local admin password
-
-### CORS
-
-- `ALLOWED_ORIGINS` – comma-separated list of allowed origins (empty = allow all in dev)
-
-### Storage / Data Paths
-
-- `DATA_DIR` – optional custom data directory (stores `songs.json` when set)
-- `SONGS_FILE` – optional absolute/relative path override for songs JSON file
-- `AWS_REGION` / `S3_REGION` – used to normalize `s3://bucket/key` URLs
-
-### Supabase
-
-- `SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`)
-- `SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`)
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `SUPABASE_STORAGE_BUCKET` (default: `avatars`)
-- `SUPABASE_SONGS_BUCKET` (default: `songs`) – bucket for audio and cover files
-
-> **Important:** Never commit real credentials. Use `.env` for local secrets and environment management for production.
+---
 
 ## Project Structure
 
 ```text
 .
-├── server.js                      # Express app entry point
-├── src/
-│   ├── config/
-│   │   ├── env.js                 # Environment configuration
-│   │   └── supabase.js            # Supabase client setup
-│   ├── middleware/
-│   │   ├── auth.js                # API key & Supabase auth middleware
-│   │   └── upload.js              # Multer file upload config
-│   ├── routes/
-│   │   ├── auth.js                # Login & auth-check routes
-│   │   ├── profile.js             # Supabase profile routes
-│   │   └── songs.js               # Song CRUD routes
-│   └── utils/
-│       ├── category.js            # Category normalization
-│       ├── media.js               # URL validation & S3 normalization
-│       └── songs.js               # JSON file read/write
-├── songs.json                     # Song data (default JSON storage)
-├── frontend/                      # React admin dashboard (Vite)
-│   ├── src/
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── index.css
-│   ├── index.html
-│   ├── vite.config.js
-│   └── public/img/                # Static assets (favicon, logos)
-├── public/                        # Built frontend output (auto-generated)
-├── supabase/
-│   └── schema.sql                 # Supabase schema with RLS policies
-└── README.md
+├── .env.example                       # Safe environment variable template (no secrets)
+├── .gitignore                         # Ignores .env, node_modules, dist, and local configs
+├── index.html                         # SPA entry point with SEO meta & dynamic favicon
+├── metadata.json                      # Application metadata
+├── package.json                       # Scripts and dependencies
+├── server.ts                          # Express 5 API server + Vite middleware integration
+├── vite.config.js                     # Vite 5 + React + Tailwind CSS v4 configuration
+├── firestore.rules                    # Cloud Firestore security rules
+├── firebase-blueprint.json            # Firestore entity schemas & collection definitions
+└── src/
+    ├── main.jsx                       # React DOM root mount
+    ├── App.jsx                        # Main application state, views, and cloud sync hooks
+    ├── index.css                      # Tailwind CSS v4 imports, custom scrollbars, animations
+    ├── firebase.js                    # Firebase Auth & Firestore CRUD / real-time listeners
+    ├── config/
+    │   └── env.js                     # Centralized environment variable loader (import.meta.env)
+    ├── services/
+    │   ├── musicService.js            # Multi-source music catalog, search, and stream resolver
+    │   └── podcastService.js          # Podcast series catalog, episodes, chapters, and progress
+    ├── utils/
+    │   └── musicUtils.js              # Track normalization, cover art sanitization, formatters
+    └── components/
+        ├── AuthGate.jsx               # Google OAuth, Email/Password, and Guest authentication UI
+        ├── Sidebar.jsx                # Collapsible studio navigation & quick genre selector
+        ├── GlobalSearch.jsx           # Command-palette search bar with voice & scope filters
+        ├── PlayerBar.jsx              # Persistent bottom audio player, queue drawer, podcast bar
+        ├── MusicPlayerPage.jsx        # Full-screen vinyl studio deck & real-time LRC lyrics
+        ├── PodcastsView.jsx           # Podcast directory, show pages, speed & sleep timer controls
+        ├── ExplorePodcastsSection.jsx # Featured podcast shelf on the Explore view
+        ├── PodcastEpisodeCard.jsx     # Individual podcast episode card with progress tracking
+        ├── UserProfileView.jsx        # Listener profile, listening DNA, history & cloud settings
+        ├── Playlists.jsx              # Custom cloud playlist manager & tracklist view
+        ├── SongCard.jsx               # Ranked, Grid, Compact, and List track cards
+        ├── ArtistCard.jsx             # Artist spotlight card
+        ├── ArtistsView.jsx            # All Artists directory grid
+        └── EditModal.jsx              # Track metadata editor modal
 ```
 
-## API Reference
+---
 
-Base URL: `http://localhost:5000`
+## Backend API Reference
 
-### Health / Info
+All backend routes are served by `server.ts` on the same origin (`/api/*`):
 
-- `GET /api` – API metadata and route summary
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/health` | Returns server status (`{ status: "ok", engine: "Azaad Hybrid Streaming Engine" }`). |
+| `GET` | `/api/explore/google-trends` | Fetches hourly trending tracks by `genre` (`?genre=All&force=false`) combining Apple Top Charts and YouTube Music. |
+| `GET` | `/api/google/search` | Searches global music tracks (`?q=<query>`) with high-resolution artwork and playable IDs. |
+| `GET` | `/api/google/lyrics` | Resolves time-synced LRC and plain lyrics (`?title=<title>&artist=<artist>&duration=<sec>`) via LRCLIB. |
+| `GET` | `/api/youtube/search` | Searches YouTube Music videos (`?q=<query>&limit=20`) with multi-tier failover (YouTube Web, Piped, Invidious). |
+| `GET` | `/api/youtube/resolve` | Resolves playable YouTube candidate video IDs (`?title=<title>&artist=<artist>`). |
+| `GET` | `/api/audio/resolve` | Resolves direct `320kbps` / `M4A` audio streams (`?title=<title>&artist=<artist>&videoId=<id>`) across JioSaavn, Audius, and iTunes. |
+| `GET` | `/api/audio/proxy` | Streams cross-origin audio (`?url=<encoded_url>`) with full HTTP `Range` (`206 Partial Content`) support. |
 
-### Song Endpoints
+---
 
-- `GET /api/songs?page=1&limit=20` – list songs (paginated)
-- `POST /api/songs` – create song (**requires `x-api-key`**)
-- `PUT /api/songs/:id` – update song (**requires `x-api-key`**)
-- `DELETE /api/songs/:id` – delete song (**requires `x-api-key`**)
+## Cloud Firestore Schema & Security Rules
 
-#### Pagination
+User data is isolated under `/users/{userId}` and protected by `firestore.rules` so only the authenticated owner (`request.auth.uid == userId`) can read or write their private subcollections:
 
-The `GET /api/songs` endpoint returns paginated results:
+- `/users/{userId}` — **UserProfile**: `displayName`, `email`, `photoURL`, `bio`, `favoriteGenre`, `audioQuality`, `createdAt`, `lastLogin`
+- `/users/{userId}/likedSongs/{songId}` — **LikedSong**: Normalized track metadata + `likedAt` timestamp
+- `/users/{userId}/playlists/{playlistId}` — **Playlist**: `name`, `description`, `coverUrl`, `trackCount`, `tracks[]`, `songIds[]`, `createdAt`, `updatedAt`
+- `/users/{userId}/playHistory/{historyId}` — **PlayHistory**: Recently streamed tracks ordered by `playedAt`
+- `/users/{userId}/searchHistory/{searchId}` — **SearchHistory**: Recent search queries and active filters ordered by `searchedAt`
+- `/users/{userId}/podcastSubscriptions/{seriesId}` — **PodcastSubscription**: Subscribed podcast shows ordered by `subscribedAt`
 
-```json
-{
-  "songs": [...],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 42,
-    "totalPages": 3
-  }
-}
-```
+---
 
-Query parameters:
-- `page` – page number (default: 1)
-- `limit` – items per page (default: 20, max: 100)
+## Production Build & Deployment
 
-#### `POST /api/songs` input
+1. **Build the client bundle and server bundle:**
+   ```bash
+   npm run build
+   ```
+   - Compiles the React + Tailwind frontend into `dist/` via `vite build`.
+   - Bundles `server.ts` into `dist/server.cjs` via `esbuild`.
 
-Accepts multipart form data:
+2. **Start the production server:**
+   ```bash
+   NODE_ENV=production npm start
+   ```
 
-- `title` (required)
-- `artist` (required)
-- `audio` file **or** `audioUrl` (required)
-- `cover` file **or** `coverUrl` (required)
-- optional: `category`, `genre`, `singers`, `type`, `vibe`, `featured`, `trending`
+---
 
-### Admin Auth
+## Security & Privacy Best Practices
 
-- `POST /api/login`
-  - Supports local username/password auth
-  - Also supports Supabase email/password auth when configured
-- `GET /api/auth-check` – validates `x-api-key`
+- **Zero Hardcoded Secrets**: All Firebase API keys, project identifiers, OAuth client IDs, and asset endpoints live exclusively in `.env`.
+- **Git Protection**: `.gitignore` blocks `.env`, `.env.*` (except `.env.example`), and `firebase-applet-config.json` from ever being committed.
+- **Strict Ownership Rules**: `firestore.rules` enforces per-user document isolation across all subcollections.
 
-### Supabase Auth + Profile
-
-- `POST /api/auth/signup` – register a new user
-- `POST /api/auth/signin` – sign in with email/password
-- `POST /api/auth/refresh` – refresh an expired access token (body: `{ "refreshToken": "..." }`)
-- `POST /api/logout` – server-side sign out (**requires bearer token**)
-- `POST /api/forgot-password` – send a password reset email (body: `{ "email": "..." }`)
-- `POST /api/reset-password` – set a new password after reset (**requires bearer token**, body: `{ "password": "..." }`)
-- `POST /api/change-password` – change password while logged in (**requires bearer token**, body: `{ "currentPassword": "...", "newPassword": "..." }`)
-- `GET /api/me` – get current user info from token (**requires bearer token**)
-- `GET /api/profile-view` (**requires bearer token**)
-- `PUT /api/profile` (**requires bearer token**)
-- `POST /api/profile/avatar` (**requires bearer token**, multipart `avatar`)
-
-### Authentication Headers
-
-API key routes:
-
-```http
-x-api-key: <ADMIN_API_KEY>
-```
-
-Bearer routes:
-
-```http
-Authorization: Bearer <access_token>
-```
-
-## Storage & Media Behavior
-
-- Uploaded files are stored under:
-  - `uploads/audio/`
-  - `uploads/covers/`
-- Songs are persisted in `songs.json` by default.
-- On delete, local uploaded files referenced by the song are removed automatically.
-- `s3://bucket/key` media URLs are normalized to public S3 HTTPS URLs.
-
-## Security
-
-The API includes the following security measures:
-
-- **Helmet** – sets standard security headers (X-Content-Type-Options, X-Frame-Options, HSTS, etc.)
-- **Rate limiting** – 100 requests per 15 minutes for general API, 20 per 15 minutes for auth endpoints
-- **Configurable CORS** – set `ALLOWED_ORIGINS` to restrict cross-origin access
-- **No credential leakage** – API keys are never returned in responses
-- **Required environment variables** – server exits on startup if admin credentials are missing
-- **Path traversal protection** – file deletion only processes paths under `uploads/`
-- **UUID song IDs** – prevents ID collision and guessing
-
-Before production:
-
-- Set strong, unique values for `ADMIN_API_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`
-- Configure `ALLOWED_ORIGINS` with your frontend domains
-- Use HTTPS via a reverse proxy
-- Rotate any exposed Supabase keys
-- Consider migrating from JSON storage to a managed database
-
-## Development
-
-Start the API server:
-
-```bash
-npm start
-```
-
-For frontend development with hot reload:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Build the frontend for production:
-
-```bash
-npm run build:frontend
-```
-
-This outputs the built React app to `public/`, which the Express server serves automatically.
-
-## Deployment
-
-Recommended topology:
-
-- **API:** Render, Railway, Fly.io, or AWS
-- **Media:** object storage (e.g., S3)
-- **Data:** migrate from JSON file to PostgreSQL for production workloads
+---
 
 ## License
 
-MIT
+MIT License

@@ -1,76 +1,33 @@
-const fs = require('fs');
-const path = require('path');
+/**
+ * Centralized Environment Configuration
+ * Reads all sensitive keys, Firebase credentials, and branding URLs from .env (import.meta.env)
+ */
 
-function loadEnvFile(filePath) {
-  if (!fs.existsSync(filePath)) return;
-  const content = fs.readFileSync(filePath, 'utf8');
-  content.split(/\r?\n/).forEach((line) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) return;
-    const separator = trimmed.indexOf('=');
-    if (separator < 1) return;
-    const key = trimmed.slice(0, separator).trim();
-    const value = trimmed.slice(separator + 1).trim();
-    if (!(key in process.env)) {
-      process.env[key] = value;
-    }
-  });
+const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
+
+export const APP_NAME = env.VITE_APP_NAME || 'Azaad Music';
+export const APP_LOGO_URL = env.VITE_APP_LOGO_URL || '/img/Logo.png';
+export const APP_FAVICON_URL = env.VITE_APP_FAVICON_URL || '/img/favicon.png';
+export const APP_BG_URL =
+  env.VITE_APP_BG_URL || 'https://mahin-cloud-storage.s3.ap-southeast-1.amazonaws.com/img/Background.jpg';
+export const AUDIUS_APP_NAME = env.VITE_AUDIUS_APP_NAME || 'AZAAD_MUSIC_PLAYER';
+
+if (typeof document !== 'undefined') {
+  document.documentElement.style.setProperty('--app-bg-url', `url("${APP_BG_URL}")`);
+  document
+    .querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')
+    .forEach((el) => el.setAttribute('href', APP_FAVICON_URL));
 }
 
-const ROOT_DIR = path.resolve(__dirname, '..', '..');
-const defaultEnvPath = path.join(ROOT_DIR, '.env');
-const exampleEnvPath = path.join(ROOT_DIR, '.env.example');
-
-if (fs.existsSync(defaultEnvPath)) {
-  loadEnvFile(defaultEnvPath);
-} else if (fs.existsSync(exampleEnvPath)) {
-  loadEnvFile(exampleEnvPath);
-}
-
-function getEnv(name, fallback = '') {
-  return process.env[name] || fallback;
-}
-
-const PORT = parseInt(process.env.PORT, 10) || 3000;
-const API_KEY = getEnv('ADMIN_API_KEY', 'azaad-admin-secret-key');
-const ADMIN_USERNAME = getEnv('ADMIN_USERNAME', 'admin');
-const ADMIN_PASSWORD = getEnv('ADMIN_PASSWORD', 'admin123');
-
-const CATEGORY_OPTIONS = ['Hindi', 'Bangla', 'English', 'Nasheed', 'Sura', 'Electronic', 'Pop', 'Hip-Hop', 'Chill', 'Other'];
-
-const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : null;
-const UPLOADS_DIR = path.join(ROOT_DIR, 'uploads');
-const AUDIO_DIR = path.join(UPLOADS_DIR, 'audio');
-const COVER_DIR = path.join(UPLOADS_DIR, 'covers');
-const SONGS_FILE = process.env.SONGS_FILE
-  ? path.resolve(process.env.SONGS_FILE)
-  : DATA_DIR
-    ? path.join(DATA_DIR, 'songs.json')
-    : path.join(ROOT_DIR, 'songs.json');
-const PLAYLISTS_FILE = process.env.PLAYLISTS_FILE
-  ? path.resolve(process.env.PLAYLISTS_FILE)
-  : DATA_DIR
-    ? path.join(DATA_DIR, 'playlists.json')
-    : path.join(ROOT_DIR, 'playlists.json');
-const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
-
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
-  : [];
-
-module.exports = {
-  ROOT_DIR,
-  PORT,
-  API_KEY,
-  ADMIN_USERNAME,
-  ADMIN_PASSWORD,
-  CATEGORY_OPTIONS,
-  DATA_DIR,
-  UPLOADS_DIR,
-  AUDIO_DIR,
-  COVER_DIR,
-  SONGS_FILE,
-  PLAYLISTS_FILE,
-  PUBLIC_DIR,
-  ALLOWED_ORIGINS,
+export const FIREBASE_CONFIG = {
+  projectId: env.VITE_FIREBASE_PROJECT_ID || '',
+  appId: env.VITE_FIREBASE_APP_ID || '',
+  apiKey: env.VITE_FIREBASE_API_KEY || '',
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || '',
+  firestoreDatabaseId: env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '',
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || '',
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID || '',
+  oAuthClientId: env.VITE_FIREBASE_OAUTH_CLIENT_ID || '',
+  recaptchaSiteKey: env.VITE_FIREBASE_RECAPTCHA_SITE_KEY || '',
 };

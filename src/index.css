@@ -1,0 +1,254 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #53f2e0;
+  --primary-dark: #00cec9;
+  --primary-foreground: #090d12;
+  --accent: #fdcb6e;
+  --accent-green: #22c55e;
+  --bg: #0a0e14;
+  --sidebar-bg: #070a0f;
+  --card-bg: rgba(18, 24, 34, 0.92);
+  --card-hover: rgba(26, 35, 49, 0.96);
+  --text: #f8fafc;
+  --text-light: #94a3b8;
+  --font-display: 'Righteous', 'Plus Jakarta Sans', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Poppins', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --app-bg-url: url('https://mahin-cloud-storage.s3.ap-southeast-1.amazonaws.com/img/Background.jpg');
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: none;
+    background-color: var(--bg);
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  button,
+  [role="button"],
+  select,
+  a {
+    cursor: pointer;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Fixed GPU-composited background layer — avoids background-attachment:fixed repaint jank */
+.app-bg {
+  background-color: var(--bg);
+  position: relative;
+  isolation: isolate;
+}
+
+.app-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: #0a0e14;
+  background-image:
+    radial-gradient(circle at 15% 10%, rgba(83, 242, 224, 0.11) 0%, transparent 42%),
+    radial-gradient(circle at 85% 20%, rgba(67, 56, 202, 0.14) 0%, transparent 46%),
+    linear-gradient(180deg, rgba(10, 14, 20, 0.72) 0%, rgba(10, 14, 20, 0.92) 100%),
+    var(--app-bg-url);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+/* High-FPS OLED Studio Card — avoids per-card backdrop-filter GPU overdraw during scroll */
+.glass-card {
+  background: linear-gradient(145deg, rgba(20, 27, 38, 0.92) 0%, rgba(13, 18, 26, 0.96) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Smooth GPU-accelerated card hover & scroll containment */
+.smooth-card {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 200ms ease,
+              background-color 200ms ease,
+              box-shadow 200ms ease;
+}
+
+.smooth-shelf {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 320px;
+}
+
+/* Smooth horizontal chip & carousel scrolling */
+.smooth-row-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+}
+
+.smooth-row-scroll > * {
+  scroll-snap-align: start;
+}
+
+.glow-primary {
+  box-shadow: 0 0 20px rgba(83, 242, 224, 0.38), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Smooth Sidebar Transitions */
+.sidebar-slide {
+  transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: width;
+}
+
+.sidebar-expanded {
+  width: 248px;
+}
+
+.sidebar-collapsed {
+  width: 74px;
+}
+
+.sidebar-collapsed .sidebar-label,
+.sidebar-collapsed .sidebar-section-label {
+  display: none;
+}
+
+.sidebar-collapsed .sidebar-nav-btn {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Custom Sleek Scrollbar for Desktop */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(10, 14, 20, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(83, 242, 224, 0.45);
+}
+
+/* Custom Range Input for Volume & Audio Controls */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.14);
+  height: 5px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+input[type="range"]:hover {
+  background: rgba(83, 242, 224, 0.3);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 10px rgba(83, 242, 224, 0.7);
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 14px rgba(83, 242, 224, 0.95);
+}
+
+/* Hide scrollbars utility */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes eq {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
+}
+
+.eq-bar-1,
+.eq-bar-2,
+.eq-bar-3,
+.eq-bar-4 {
+  height: 14px;
+  transform-origin: bottom;
+  will-change: transform;
+}
+
+.eq-bar-1 { animation: eq 0.8s ease-in-out infinite; }
+.eq-bar-2 { animation: eq 0.6s ease-in-out 0.2s infinite; }
+.eq-bar-3 { animation: eq 1.0s ease-in-out 0.4s infinite; }
+.eq-bar-4 { animation: eq 0.7s ease-in-out 0.1s infinite; }
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 16s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-spin-slow,
+  .eq-bar-1,
+  .eq-bar-2,
+  .eq-bar-3,
+  .eq-bar-4 {
+    animation: none !important;
+  }
+}

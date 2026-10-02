@@ -1,40 +1,121 @@
 {
   "entities": {
     "UserProfile": {
-      "collection": "users",
-      "fields": {
+      "title": "UserProfile",
+      "description": "User profile information and listener preferences",
+      "type": "object",
+      "properties": {
         "userId": { "type": "string" },
         "displayName": { "type": "string" },
         "email": { "type": "string" },
-        "avatarUrl": { "type": "string" },
-        "createdAt": { "type": "timestamp" }
+        "photoURL": { "type": "string" },
+        "bio": { "type": "string" },
+        "favoriteGenres": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastLogin": { "type": "string", "format": "date-time" }
       }
     },
     "LikedSong": {
-      "collection": "users/{userId}/likedSongs",
-      "fields": {
+      "title": "LikedSong",
+      "description": "Songs liked or favorited by the user",
+      "type": "object",
+      "properties": {
+        "songId": { "type": "string" },
+        "title": { "type": "string" },
+        "artist": { "type": "string" },
+        "singers": { "type": "string" },
+        "album": { "type": "string" },
+        "category": { "type": "string" },
+        "genre": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "audioUrl": { "type": "string" },
+        "duration": { "type": "number" },
+        "source": { "type": "string" },
+        "likedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Playlist": {
+      "title": "Playlist",
+      "description": "User created music playlists",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "trackCount": { "type": "number" },
+        "tracks": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "PlayHistory": {
+      "title": "PlayHistory",
+      "description": "Historical record of tracks listened to by the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
         "songId": { "type": "string" },
         "title": { "type": "string" },
         "artist": { "type": "string" },
         "coverUrl": { "type": "string" },
         "audioUrl": { "type": "string" },
-        "duration": { "type": "number" },
         "source": { "type": "string" },
-        "likedAt": { "type": "timestamp" }
+        "genre": { "type": "string" },
+        "duration": { "type": "number" },
+        "playedAt": { "type": "string", "format": "date-time" }
       }
     },
-    "Playlist": {
-      "collection": "users/{userId}/playlists",
-      "fields": {
-        "playlistId": { "type": "string" },
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "coverUrl": { "type": "string" },
-        "trackCount": { "type": "number" },
-        "tracks": { "type": "array" },
-        "createdAt": { "type": "timestamp" },
-        "updatedAt": { "type": "timestamp" }
+    "SearchHistory": {
+      "title": "SearchHistory",
+      "description": "User's search terms and filter queries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "query": { "type": "string" },
+        "filter": { "type": "string" },
+        "searchedAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "PodcastSubscription": {
+      "title": "PodcastSubscription",
+      "description": "User's subscribed podcast series",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "seriesId": { "type": "string" },
+        "title": { "type": "string" },
+        "host": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "subscribedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile documents"
+    },
+    "/users/{userId}/likedSongs/{songId}": {
+      "schema": "LikedSong",
+      "description": "User's liked tracks"
+    },
+    "/users/{userId}/playlists/{playlistId}": {
+      "schema": "Playlist",
+      "description": "Playlists created by the user"
+    },
+    "/users/{userId}/playHistory/{historyId}": {
+      "schema": "PlayHistory",
+      "description": "Record of played songs for the user"
+    },
+    "/users/{userId}/searchHistory/{searchId}": {
+      "schema": "SearchHistory",
+      "description": "Search history entries for the user"
+    },
+    "/users/{userId}/podcastSubscriptions/{podcastId}": {
+      "schema": "PodcastSubscription",
+      "description": "Podcast series subscriptions of the user"
     }
   }
 }

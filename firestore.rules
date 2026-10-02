@@ -18,6 +18,11 @@ service cloud.firestore {
       allow create, update, delete: if isOwner(userId);
     }
 
+    // Health check test connection
+    match /test/{docId} {
+      allow read: if true;
+    }
+
     // User liked songs collection
     match /users/{userId}/likedSongs/{songId} {
       allow read, write: if isOwner(userId);
@@ -25,6 +30,21 @@ service cloud.firestore {
 
     // User playlists collection
     match /users/{userId}/playlists/{playlistId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // User play history
+    match /users/{userId}/playHistory/{historyId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // User search history
+    match /users/{userId}/searchHistory/{searchId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // User podcast subscriptions
+    match /users/{userId}/podcastSubscriptions/{subId} {
       allow read, write: if isOwner(userId);
     }
 

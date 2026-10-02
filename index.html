@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Azaad Music</title>
+    <meta name="description" content="Azaad Music - High-fidelity global music streaming platform covering trending viral hits, international charts, multi-lingual genres, and universal artists" />
+    <meta name="keywords" content="Azaad Music, free music streaming, 320kbps audio, global top charts, synced lyrics, podcasts, Audius, YouTube music player" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="theme-color" content="#080b10" />
+    <link rel="canonical" id="canonical-link" />
+
+    <!-- OpenGraph Social Cards -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Azaad Music" />
+    <meta property="og:title" content="Azaad Music" />
+    <meta property="og:description" content="Azaad Music - High-fidelity global music streaming platform covering trending viral hits, international charts, multi-lingual genres, and universal artists" />
+    <meta property="og:image" content="/img/Logo.png" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter / X Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Azaad Music" />
+    <meta name="twitter:description" content="Azaad Music - High-fidelity global music streaming platform covering trending viral hits, international charts, multi-lingual genres, and universal artists" />
+    <meta name="twitter:image" content="/img/Logo.png" />
+
+    <!-- Schema.org JSON-LD Structured Data (SEO & AI Answer Engines) -->
+    <script type="application/ld+json" id="schema-jsonld">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebApplication",
+            "name": "Azaad Music",
+            "applicationCategory": "MultimediaApplication",
+            "operatingSystem": "All",
+            "description": "Azaad Music - High-fidelity global music streaming platform covering trending viral hits, international charts, multi-lingual genres, and universal artists",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "featureList": [
+              "320kbps High-Fidelity Audio Streaming",
+              "Hourly Global & Regional Trending Charts",
+              "Time-Synced LRC Lyrics",
+              "Curated Podcasts with Chapter Navigation",
+              "Cloud-Synced Playlists & Liked Songs"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "name": "Azaad Music",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "?q={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          }
+        ]
+      }
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/img/favicon.svg" />
+    <link rel="icon" type="image/png" href="/img/favicon.png" />
+    <link rel="apple-touch-icon" href="/img/favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700&family=Righteous&display=swap" rel="stylesheet" />
+    <script>
+      (function () {
+        const originalStringify = JSON.stringify;
+        JSON.stringify = function (value, replacer, space) {
+          try {
+            return originalStringify.call(this, value, replacer, space);
+          } catch (err) {
+            if (
+              err instanceof TypeError &&
+              (err.message.includes('circular') || err.message.includes('cyclic'))
+            ) {
+              const seen = new WeakSet();
+              const safeReplacer = function (key, val) {
+                if (typeof val === 'object' && val !== null) {
+                  if (seen.has(val)) {
+                    return '[Circular]';
+                  }
+                  seen.add(val);
+                }
+                if (typeof replacer === 'function') {
+                  return replacer.call(this, key, val);
+                }
+                return val;
+              };
+              try {
+                return originalStringify.call(this, value, safeReplacer, space);
+              } catch {
+                return '"[Unserializable Object]"';
+              }
+            }
+            throw err;
+          }
+        };
+      })();
+    </script>
+  </head>
+  <body class="bg-[#2D3436]">
+    <div id="root"></div>
+    <script src="https://www.youtube.com/iframe_api" async></script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
